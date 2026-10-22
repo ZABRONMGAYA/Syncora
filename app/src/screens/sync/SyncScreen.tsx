@@ -1,27 +1,17 @@
 // S05 Analysis (live progress of the whole production, counts and rates only: no time estimates) and S08 Sync
-// results (categories, per-source table, review callout).
-import { CircleCheck, Download, ListX, Pause, Play, RotateCcw, ScanEye, TriangleAlert, X } from "lucide-react";
+// results (synced and not synced, per source).
+import { CircleCheck, Download, ListX, Pause, Play, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { bridge, call } from "../../api/client";
 import type { PipelineStatus, ResultCategory, StageCounts, TaskRow } from "../../api/contract";
-import {
-  Button,
-  ConfidenceBar,
-  Dialog,
-  Eyebrow,
-  SegmentedProgress,
-  SyncBadge,
-  shortcut,
-  statusFor,
-} from "../../design-system/components";
+import { Button, Dialog, Eyebrow, SegmentedProgress, SyncBadge, shortcut } from "../../design-system/components";
 import { formatDuration } from "../../lib/format";
 import { useAnalyze } from "../../state/analyze";
 import { useProd } from "../../state/production";
 import { useApp } from "../../state/store";
-import { CATEGORY_LABEL, deviceLetters } from "../media/labels";
+import { deviceLetters, notSyncedTotal } from "../media/labels";
 import { SyncWorkspace } from "../../features/multicam/SyncWorkspace";
-import { startReview } from "../../features/multicam/ReviewBar";
 import { AiSync } from "./AiSync";
 
 export function SyncScreen() {
@@ -506,22 +496,18 @@ function ErrorsDialog({ onClose }: { onClose: () => void }) {
 
 // ------------------------------------------------------------------ S08
 
-const CATEGORY_ORDER: { key: ResultCategory; query: string }[] = [
-  { key: "synchronized", query: "synchronized" },
-  { key: "confirmed", query: "confirmed" },
-  { key: "high_confidence", query: "confidence >= 95%" },
-  { key: "review", query: "review" },
-  { key: "manual", query: "manual" },
-  { key: "failed", query: "failed" },
-  { key: "skipped", query: "skipped" },
-];
+/** A source's clips that are not synced (its counts never include files that could not be read). */
+function notSyncedCount(counts: Record<ResultCategory, number>): number {
+  return (counts.review ?? 0) + (counts.manual ?? 0) + (counts.failed ?? 0);
+}
 
 function Results() {
   const summary = useProd((s) => s.summary)!;
   const devices = useProd((s) => s.devices);
-  const threshold = summary.threshold;
   const letters = useMemo(() => deviceLetters(devices), [devices]);
   const c = summary.counts;
+  const synced = c.synchronized ?? 0;
+  const notSynced = notSyncedTotal(summary);
   const cameras = summary.sources.filter((s) => s.kind !== "recorder").length;
   const audio = summary.sources.filter((s) => s.kind === "recorder").length;
   const elapsed = summary.run?.elapsed_s;
@@ -531,7 +517,6 @@ function Results() {
     prod.setQuery(query);
     prod.setStage("media");
   };
-  const worst = summary.sources.filter((s) => s.counts.review > 0).sort((a, b) => b.counts.review - a.counts.review)[0];
 
   return (
     <div className="sy-results" data-testid="results">
@@ -549,35 +534,14 @@ function Results() {
             <span>
               {audio} Audio Source{audio === 1 ? "" : "s"}
             </span>
-            <span>{(c.synchronized ?? 0).toLocaleString()} synced</span>
-            {c.review > 0 && (
-              <span className="sy-warn">
-                <TriangleAlert size={20} aria-hidden /> {c.review.toLocaleString()} review recommended
-              </span>
-            )}
+            <span className="sy-results__synced">{synced.toLocaleString()} synced</span>
+            {notSynced > 0 && <span className="sy-results__not-synced">{notSynced.toLocaleString()} not synced</span>}
           </div>
         </div>
         <div className="sy-results__actions">
           <Button variant="secondary" size="dialog" icon={Download} onClick={() => void saveReport()}>
             Save report
           </Button>
-          {c.review > 0 && (
-            <Button
-              variant="warning"
-              size="dialog"
-              onClick={() => {
-                useProd.getState().setSyncView("workspace");
-                // The review opens once the workspace has the timeline.
-                void useApp
-                  .getState()
-                  .refresh()
-                  .then(() => startReview());
-              }}
-              data-testid="review-clips"
-            >
-              Review {c.review.toLocaleString()} clip{c.review === 1 ? "" : "s"}
-            </Button>
-          )}
           <Button
             variant="primary"
             size="dialog"
@@ -593,94 +557,48 @@ function Results() {
         </div>
       </header>
 
-      <div className="sy-categories" data-testid="categories">
-        {CATEGORY_ORDER.map(({ key, query }) => (
-          <button
-            key={key}
-            type="button"
-            className={`sy-category sy-category--${key}`}
-            onClick={() => goto(query)}
-            data-testid={`category-${key}`}
-          >
-            <span className="sy-category__n tnum">{(c[key] ?? 0).toLocaleString()}</span>
-            <span className="sy-category__label">{CATEGORY_LABEL[key]}</span>
-          </button>
-        ))}
+      <div className="sy-categories sy-categories--two" data-testid="categories">
+        <button
+          type="button"
+          className="sy-category sy-category--synced"
+          onClick={() => goto("synced")}
+          data-testid="category-synced"
+        >
+          <span className="sy-category__n tnum">{synced.toLocaleString()}</span>
+          <span className="sy-category__label">Synced</span>
+        </button>
+        <button
+          type="button"
+          className="sy-category sy-category--not-synced"
+          onClick={() => goto("not synced")}
+          data-testid="category-not-synced"
+        >
+          <span className="sy-category__n tnum">{notSynced.toLocaleString()}</span>
+          <span className="sy-category__label">Not synced</span>
+        </button>
       </div>
-
-      {c.review > 0 && worst && (
-        <div className="sy-callout" role="note">
-          <TriangleAlert size={20} className="sy-banner__icon" aria-hidden />
-          <div>
-            <div className="sy-banner__title">
-              Review recommended · {worst.name}
-              {worst.min_confidence !== null ? ` at ${Math.round(worst.min_confidence * 100)}%` : ""}
-            </div>
-            <div className="sy-banner__body">
-              {c.review.toLocaleString()} placement{c.review === 1 ? " is" : "s are"} below the review threshold of{" "}
-              {Math.round(threshold * 100)}% or rest on recording times alone. Nothing below the threshold is locked
-              automatically.
-            </div>
-          </div>
-          <button type="button" className="sy-link" onClick={() => goto("review")}>
-            Show clips
-          </button>
-        </div>
-      )}
-
-      {c.manual + c.failed > 0 && (
-        <div className="sy-callout sy-callout--ai" role="note">
-          <ScanEye size={20} className="sy-banner__icon" aria-hidden />
-          <div>
-            <div className="sy-banner__title">
-              {(c.manual + c.failed).toLocaleString()} clip{c.manual + c.failed === 1 ? "" : "s"} could not be placed by
-              audio
-            </div>
-            <div className="sy-banner__body">
-              AI sync looks for them by what was said, flashes and light changes, and the camera clocks. Its proposals
-              are shown for review; nothing is locked automatically.
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            size="36"
-            icon={ScanEye}
-            onClick={() =>
-              void useApp.getState().run(async () => {
-                await call("ai.fallback", {});
-                useApp.getState().toast("info", "AI sync is looking for the clips audio could not place.");
-              })
-            }
-            data-testid="ai-fallback"
-          >
-            Find them with AI
-          </Button>
-        </div>
-      )}
 
       <div className="sy-results__table" role="table" aria-label="Results by source">
         <div className="sy-results__row sy-results__row--head" role="row">
           <span />
           <span>Source</span>
-          <span>Confidence (median)</span>
+          <span>Synced</span>
           <span />
           <span>Clips synced</span>
-          <span>Needs attention</span>
+          <span>Not synced</span>
           <span>Status</span>
         </div>
         {summary.sources.map((s) => {
-          // Nothing of this source could be placed by audio: its clips wait for manual sync. Their clock-only
-          // estimate is not a sync confidence, so none is shown.
-          const manualOnly = s.counts.synchronized === 0 && s.counts.review === 0 && s.counts.manual > 0;
-          const conf = manualOnly ? null : s.median_confidence;
-          const status = conf === null ? "none" : statusFor(s.min_confidence ?? conf, threshold);
-          const attention = s.counts.review + s.counts.manual + s.counts.failed;
+          const ok = s.counts.synchronized;
+          const not = notSyncedCount(s.counts);
+          const total = ok + not;
+          const share = total ? ok / total : 0;
           const l = s.device_id !== null ? letters.get(s.device_id) : undefined;
           return (
             <div
               key={s.device_id ?? "none"}
               role="row"
-              className={`sy-results__row ${s.counts.review ? "sy-results__row--review" : ""}`}
+              className="sy-results__row"
               onClick={() => {
                 const prod = useProd.getState();
                 if (s.device_id !== null) prod.setBin(`device:${s.device_id}`);
@@ -690,31 +608,20 @@ function Results() {
             >
               <span className={`sy-chip-letter ${l?.audio ? "sy-chip-letter--audio" : ""}`}>{l?.letter ?? "–"}</span>
               <span className="sy-results__name sy-ellipsis">{s.name}</span>
-              <span>
-                {conf !== null && <ConfidenceBar value={conf} tone={status === "none" ? "good" : status} height={8} />}
+              <span className="sy-results__share" aria-hidden>
+                <span style={{ width: `${share * 100}%` }} />
               </span>
-              <span className="sy-results__pct tnum">{conf !== null ? `${Math.round(conf * 100)}%` : "—"}</span>
+              <span className="sy-results__pct tnum">{total ? `${Math.round(share * 100)}%` : "—"}</span>
               <span className="tnum">
-                {s.counts.synchronized.toLocaleString()} of {s.clips.toLocaleString()}
+                {ok.toLocaleString()} of {total.toLocaleString()}
               </span>
-              <span className="tnum">
-                {attention
-                  ? `${attention.toLocaleString()} (${[
-                      s.counts.review && `${s.counts.review} review`,
-                      s.counts.manual && `${s.counts.manual} manual`,
-                      s.counts.failed && `${s.counts.failed} failed`,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")})`
-                  : "—"}
-              </span>
+              <span className={`tnum ${not ? "sy-results__not-synced" : ""}`}>{not ? not.toLocaleString() : "—"}</span>
               <span>
-                <SyncBadge
-                  status={status === "none" ? "none" : status}
-                  confidence={manualOnly ? undefined : s.min_confidence}
-                  size="md"
-                  label={manualOnly ? "Manual sync required" : status === "review" ? "Review recommended" : undefined}
-                />
+                {not === 0 ? (
+                  <SyncBadge status="synced" size="md" />
+                ) : (
+                  <SyncBadge status="unsynced" size="md" label={`${not.toLocaleString()} not synced`} />
+                )}
               </span>
             </div>
           );

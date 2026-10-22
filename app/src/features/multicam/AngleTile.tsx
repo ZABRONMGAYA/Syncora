@@ -223,7 +223,7 @@ export const AngleTile = memo(function AngleTile(props: TileProps) {
             ) : review ? (
               <SyncBadge
                 status="review"
-                label="REVIEW REQUIRED"
+                label="NOT SYNCED"
                 confidence={shownClip.method === "audio" ? shownClip.confidence : null}
               />
             ) : shownClip.status === "unsynced" ? (

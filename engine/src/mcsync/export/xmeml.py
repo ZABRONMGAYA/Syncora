@@ -25,8 +25,8 @@ from .sequence import ExportClip, ExportSequence, SourceMedia, media_frames
 from .urls import file_url
 
 TICKS_PER_SECOND = 254_016_000_000
-#: Premiere Pro's label for clips whose position should be checked (``ExportClip.review_note``).
-REVIEW_LABEL = "Mango"
+#: Premiere Pro's red label, for clips that are not synced (``ExportClip.synced``).
+NOT_SYNCED_LABEL = "Rose"
 
 
 def _el(parent: ET.Element, tag: str, text: object = None, **attrs: str) -> ET.Element:
@@ -156,16 +156,8 @@ class _Writer:
         if kind == "video":
             _el(item, "alphatype", "none")
         self.file(item, clip.media)
-        if clip.review_note:
-            # Orange in the timeline, with the reason on the clip's first item (its picture, or its first channel).
-            first = (kind == "video") or (clip.video_track is None and clip.audio_tracks[:1] == (track,))
-            if first:
-                marker = _el(item, "marker")
-                _el(marker, "name", "Check sync")
-                _el(marker, "comment", clip.review_note)
-                _el(marker, "in", in_frames)
-                _el(marker, "out", -1)
-            _el(_el(item, "labels"), "label2", REVIEW_LABEL)
+        if not clip.synced:
+            _el(_el(item, "labels"), "label2", NOT_SYNCED_LABEL)  # red in the timeline
         source = _el(item, "sourcetrack")
         _el(source, "mediatype", kind)
         _el(source, "trackindex", 1 if kind == "video" else clip.audio_tracks.index(track) + 1)

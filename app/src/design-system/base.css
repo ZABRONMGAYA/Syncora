@@ -482,6 +482,15 @@ textarea {
   color: var(--sy-text-3);
   border-color: var(--sy-border);
 }
+.sy-badge--synced {
+  color: var(--sy-status-success);
+  border-color: var(--sy-status-success);
+}
+.sy-badge--unsynced {
+  background: var(--sy-status-error);
+  border-color: var(--sy-status-error);
+  color: var(--sy-brand-secondary);
+}
 
 .sy-status-square {
   display: inline-grid;

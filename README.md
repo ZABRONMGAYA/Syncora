@@ -1,9 +1,9 @@
 # Syncora
 
 A desktop application that automatically synchronises multicamera video and external audio recordings, from a
-single wedding to a multi-day production with thousands of files. It matches audio and timecode, flags anything
-uncertain for review, and exports a timeline XML for DaVinci Resolve, Adobe Premiere Pro and Final Cut Pro. Original
-media is never re-encoded, modified or deleted.
+single wedding to a multi-day production with thousands of files. It matches audio and timecode, tells you plainly
+which clips are synced and which are not, and exports a timeline XML for DaVinci Resolve, Adobe Premiere Pro and Final
+Cut Pro. Original media is never re-encoded, modified or deleted.
 
 Built for wedding filmmakers, event videographers, documentary producers and multicam editors: hours of recorder
 audio, hundreds or thousands of interrupted camera clips, mixed frame rates, drifting clocks.
@@ -78,8 +78,16 @@ half a frame of where synchronisation put it. Clips that need review are left ou
 
 Exported timelines list every file in bins that mirror the folders you imported (`Wedding / Cam A / CARD1`):
 nested bins with one master clip per file in Premiere Pro and DaVinci Resolve (FCP 7 XML), keyword collections in
-folders in Final Cut Pro (FCPXML). Clips placed for review are labelled orange with a "Check sync" marker saying
-why, so they cannot pass for synchronised in the editor. Settings → Export → Keep my folders as bins turns bins off.
+folders in Final Cut Pro (FCPXML). Settings → Export → Keep my folders as bins turns bins off.
+
+## Synced or not synced
+
+Results come in two words. A clip is **synced** when audio, timecode or your own placement puts it at a position
+Syncora is sure of (at or above the review threshold in Settings → Synchronization); every other clip is **not
+synced**: placed only by uncertain evidence or a camera clock, not placed at all, or unreadable. In the exported XML,
+clips that are not synced carry Premiere Pro's red label (Rose) or, in FCPXML, a "Not synced" keyword. The export
+dialog (and Settings → Export) chooses where they go: at the end of the timeline after the synced clips, one after
+another on their camera's track (the default); where Syncora put them; or left out.
 
 ## Updates
 

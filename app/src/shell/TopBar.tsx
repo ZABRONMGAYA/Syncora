@@ -3,6 +3,7 @@ import { Clapperboard, Search, Settings } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button, SyncoraSymbol, shortcut } from "../design-system/components";
+import { notSyncedTotal } from "../screens/media/labels";
 import { useEdit } from "../state/edit";
 import { type Stage, useProd } from "../state/production";
 import { openSearch, useApp } from "../state/store";
@@ -18,7 +19,7 @@ const STAGES: { id: Stage; label: string; disabled?: string }[] = [
 export function TopBar() {
   const project = useApp((s) => s.project);
   const stage = useProd((s) => s.stage);
-  const review = useProd((s) => s.summary?.counts.review ?? 0);
+  const notSynced = useProd((s) => notSyncedTotal(s.summary));
   const running = useProd((s) => s.pipeline?.state === "running");
 
   useEffect(() => {
@@ -53,7 +54,9 @@ export function TopBar() {
           >
             <span className="sy-stage-tab__num">{String(k + 1).padStart(2, "0")}</span>
             {s.label}
-            {s.id === "sync" && review > 0 && <span className="sy-stage-tab__dot" aria-label={`${review} to review`} />}
+            {s.id === "sync" && notSynced > 0 && (
+              <span className="sy-stage-tab__dot" aria-label={`${notSynced} not synced`} />
+            )}
           </button>
         ))}
       </nav>

@@ -163,8 +163,13 @@ function fpsValue(fps: string | null): number | null {
 
 export function matchesStatus(row: MediaRow, status: StatusWord): boolean {
   switch (status) {
-    case "unsynchronized":
-      return row.category === "manual" || row.category === "pending" || row.category === "failed";
+    case "unsynchronized": // every clip that is not synced, whatever placed it (or nothing did)
+      return (
+        row.category === "review" ||
+        row.category === "manual" ||
+        row.category === "pending" ||
+        row.category === "failed"
+      );
     case "synchronized":
       return row.category === "synchronized" || row.category === "high_confidence" || row.category === "confirmed";
     case "confirmed":

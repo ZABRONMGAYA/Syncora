@@ -2,8 +2,10 @@
 import { type FormEvent, useEffect, useState } from "react";
 
 import { bridge } from "../../api/client";
-import type { ExportFormat, ExportReport, Timeline } from "../../api/contract";
+import type { ExportFormat, ExportReport, NotSyncedPlacement, Timeline } from "../../api/contract";
 import { formatDuration, parseRate, rateLabel } from "../../lib/format";
+import { notSyncedTotal } from "../../screens/media/labels";
+import { useProd } from "../../state/production";
 import { usePick } from "../../state/store";
 
 const SETTINGS_KEY = "mcsync.exportOptions";
@@ -28,7 +30,8 @@ export interface ExportDefaults {
   format: ExportFormat;
   rate: string; // "" = automatic
   startTimecode: string;
-  includeUncertain: boolean;
+  /** Clips that are not synced: after the synced timeline, where Syncora put them, or left out. Red in the NLE. */
+  notSynced: NotSyncedPlacement;
   /** Bins (Premiere Pro, Resolve) or keyword collections (Final Cut Pro) that mirror the imported folders. */
   folderBins: boolean;
 }
@@ -39,13 +42,26 @@ const DEFAULTS: Settings = {
   format: "xmeml",
   rate: "",
   startTimecode: "01:00:00:00",
-  includeUncertain: true,
+  notSynced: "end",
   folderBins: true,
 };
 
+/** Where clips that are not synced go in the exported timeline. */
+export const NOT_SYNCED_CHOICES: { value: NotSyncedPlacement; label: string }[] = [
+  { value: "end", label: "At the end of the timeline" },
+  { value: "place", label: "Where Syncora put them" },
+  { value: "omit", label: "Leave them out" },
+];
+
 export function loadSettings(): Settings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") as Partial<Settings>) };
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") as Partial<Settings> & {
+      includeUncertain?: boolean;
+    };
+    // Before 1.4.1 the choice was "Include clips that need review".
+    const notSynced = saved.notSynced ?? (saved.includeUncertain === false ? "omit" : DEFAULTS.notSynced);
+    const { includeUncertain: _old, ...rest } = saved;
+    return { ...DEFAULTS, ...rest, notSynced };
   } catch {
     return DEFAULTS;
   }
@@ -99,8 +115,23 @@ export function accuracy(report: ExportReport): string {
   return parts.join(" ");
 }
 
-function Result({ report, onDone }: { report: ExportReport; onDone: () => void }) {
+const PLACED: Record<NotSyncedPlacement, string> = {
+  end: "at the end of the timeline",
+  place: "where Syncora put them",
+  omit: "",
+};
+
+function Result({
+  report,
+  placement,
+  onDone,
+}: {
+  report: ExportReport;
+  placement: NotSyncedPlacement;
+  onDone: () => void;
+}) {
   const seq = report.sequence;
+  const notSynced = report.not_synced ?? 0;
   const name = report.path.split(/[\\/]/).pop();
   return (
     <div className="export-result" data-testid="export-result">
@@ -112,6 +143,12 @@ function Result({ report, onDone }: { report: ExportReport; onDone: () => void }
         {formatDuration(seq.duration_s)} · {seq.video_tracks} video and {seq.audio_tracks} audio tracks
       </p>
       <p data-testid="export-accuracy">{accuracy(report)}</p>
+      {notSynced > 0 && (
+        <p data-testid="export-not-synced">
+          {notSynced.toLocaleString()} clip{notSynced === 1 ? " is" : "s are"} not synced: red in the timeline
+          {PLACED[placement] ? `, ${PLACED[placement]}` : ""}.
+        </p>
+      )}
       {report.skipped.length > 0 && (
         <>
           <h3>Not exported</h3>
@@ -156,6 +193,7 @@ export function ExportDialog() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [exportGroup, setExportGroup] = useState(0);
   const [busy, setBusy] = useState(false);
+  const notSyncedCount = useProd((s) => notSyncedTotal(s.summary));
 
   useEffect(() => {
     if (!exportOpen) return;
@@ -167,9 +205,6 @@ export function ExportDialog() {
 
   if (!exportOpen || !timeline) return null;
   const auto = dominantRate(timeline, exportGroup);
-  const reviewCount = timeline.groups
-    .find((g) => g.group === exportGroup)
-    ?.clips.filter((c) => c.status === "needs_review").length;
   const timecodeOk = TIMECODE.test(settings.startTimecode);
   const update = (changes: Partial<Settings>) => setSettings((s) => ({ ...s, ...changes }));
 
@@ -183,7 +218,7 @@ export function ExportDialog() {
         format: settings.format,
         group: exportGroup,
         start_timecode: settings.startTimecode,
-        include_uncertain: settings.includeUncertain,
+        not_synced: settings.notSynced,
         bins: settings.folderBins,
         ...(settings.rate ? { sequence_rate: settings.rate } : {}),
       });
@@ -204,7 +239,7 @@ export function ExportDialog() {
       >
         <h2 id="export-title">Export timeline</h2>
         {lastExport ? (
-          <Result report={lastExport} onDone={closeExport} />
+          <Result report={lastExport} placement={settings.notSynced} onDone={closeExport} />
         ) : (
           <form onSubmit={(e) => void submit(e)}>
             <fieldset className="formats">
@@ -267,13 +302,19 @@ export function ExportDialog() {
                   data-testid="start-timecode"
                 />
               </label>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={settings.includeUncertain}
-                  onChange={(e) => update({ includeUncertain: e.target.checked })}
-                />
-                Include clips that need review{reviewCount ? ` (${reviewCount})` : ""}
+              <label>
+                Clips not synced{notSyncedCount ? ` (${notSyncedCount.toLocaleString()})` : ""}
+                <select
+                  value={settings.notSynced}
+                  onChange={(e) => update({ notSynced: e.target.value as NotSyncedPlacement })}
+                  data-testid="export-not-synced-placement"
+                >
+                  {NOT_SYNCED_CHOICES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="check">
                 <input

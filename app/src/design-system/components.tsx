@@ -120,7 +120,9 @@ export type SyncStatus =
   | "running"
   | "none"
   | "locked"
-  | "skipped";
+  | "skipped"
+  | "synced"
+  | "unsynced";
 
 const BADGE: Record<SyncStatus, { label: string; icon: LucideIcon }> = {
   reference: { label: "Reference", icon: Anchor },
@@ -132,6 +134,8 @@ const BADGE: Record<SyncStatus, { label: string; icon: LucideIcon }> = {
   none: { label: "Not synced", icon: Minus },
   locked: { label: "Locked", icon: Lock },
   skipped: { label: "Skipped", icon: Minus },
+  synced: { label: "Synced", icon: Check },
+  unsynced: { label: "Not synced", icon: X },
 };
 
 /** Status is always icon + word (+ number): colour is never the only cue. */
@@ -158,7 +162,7 @@ export function SyncBadge({
 
 export function StatusSquare({ status }: { status: "ok" | "review" | "failed" | "none" }) {
   const Icon = status === "ok" ? Check : status === "review" ? TriangleAlert : status === "failed" ? X : Minus;
-  const word = { ok: "Synchronized", review: "Review", failed: "Failed", none: "Not synced" }[status];
+  const word = { ok: "Synced", review: "Not synced", failed: "Not synced", none: "Not synced yet" }[status];
   return (
     <span className={`sy-status-square sy-status-square--${status}`} title={word} aria-label={word} role="img">
       <Icon size={12} aria-hidden />

@@ -75,8 +75,7 @@
               <asset-clip ref="r2" lane="1" offset="87447360/24000s" name="A001.MOV" start="865584720/24000s" duration="2879877/24000s" tcFormat="NDF" audioRole="dialogue" />
               <asset-clip ref="r8" lane="3" offset="88166078/24000s" name="GH020042.MP4" start="0s" duration="1439438/24000s" tcFormat="NDF" audioRole="dialogue" />
               <asset-clip ref="r5" lane="2" offset="88171083/24000s" name="C0001 #2.MP4" start="1081800720/30000s" duration="3599596/24000s" tcFormat="DF" audioRole="dialogue">
-                <keyword start="1081800720/30000s" duration="3599596/24000s" value="Check sync" />
-                <marker start="1081800720/30000s" duration="1001/24000s" value="Check sync: placed by an uncertain audio match." />
+                <keyword start="1081800720/30000s" duration="3599596/24000s" value="Not synced" />
               </asset-clip>
               <asset-clip ref="r3" lane="1" offset="90578488/24000s" name="A002.MOV" start="868719852/24000s" duration="4799795/24000s" tcFormat="NDF" audioRole="dialogue" />
               <asset-clip ref="r10" lane="4" offset="93926833/24000s" name="DJI_0001.MP4" start="36300s" duration="959959/24000s" tcFormat="NDF" />

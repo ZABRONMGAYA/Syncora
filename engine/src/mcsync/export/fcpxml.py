@@ -21,6 +21,7 @@ from .sequence import ExportSequence, SourceMedia, media_frames
 from .urls import file_url
 
 VERSION = "1.10"
+NOT_SYNCED_KEYWORD = "Not synced"
 
 
 def fcp_time(t: Fraction, rate: Fraction | int | None = None) -> str:
@@ -182,11 +183,8 @@ class _Writer:
             if media.audio_channels:
                 attrs["audioRole"] = "dialogue"
             item = _el(gap, "asset-clip", **attrs)
-            if clip.review_note:
-                # The reason as a marker at the clip's first frame, and a keyword to find every such clip.
-                one_frame = fcp_time(1 / rate, rate)
-                _el(item, "keyword", start=attrs["start"], duration=attrs["duration"], value="Check sync")
-                _el(item, "marker", start=attrs["start"], duration=one_frame, value=clip.review_note)
+            if not clip.synced:  # FCPXML has no clip colours: a keyword finds every clip that is not synced
+                _el(item, "keyword", start=attrs["start"], duration=attrs["duration"], value=NOT_SYNCED_KEYWORD)
         for m in seq.markers:  # after the clips, as the DTD orders a gap's children
             attrs = {"start": fcp_time(tc_start + Fraction(m.frame) / rate, rate), "duration": fcp_time(1 / rate, rate)}
             attrs["value"] = m.name

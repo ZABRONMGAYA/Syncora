@@ -39,6 +39,12 @@ class ExportError(ValueError):
     """The timeline cannot be exported as asked."""
 
 
+NOT_SYNCED_MODES = ("end", "place", "omit")
+#: After the synced timeline: a gap before the clips that are not synced, and between them on one track.
+END_GAP_S = 5
+END_SPACING_S = 1
+
+
 @dataclass(frozen=True)
 class ExportOptions:
     name: str = "Synchronised"
@@ -48,12 +54,25 @@ class ExportOptions:
     start_timecode: str = "01:00:00:00"
     #: Timeline group: 0 is the reference and everything synced to it.
     group: int = 0
-    #: Also export clips placed by uncertain matches or camera clocks only (they are listed as warnings).
+    #: Also export clips placed by uncertain matches or camera clocks only (see ``not_synced``).
     include_uncertain: bool = True
     #: Put each file in a bin that mirrors its folder (export/bins.py); off: one flat list, as the editor imports it.
     bins: bool = True
     #: The paths the user imported (files or folders): the top of every bin.
     roots: tuple[str, ...] = ()
+    #: Clips that are not synced: ``"end"`` puts every one of them (wherever synchronisation left it, or nowhere)
+    #: after the synced timeline, one after another on its camera's track; ``"place"`` keeps those that have a
+    #: position there and leaves out those that have none; ``"omit"`` leaves them all out. None: ``"place"``, or
+    #: ``"omit"`` when ``include_uncertain`` is off. Clips that are not synced carry the NLE's red label.
+    not_synced: str | None = None
+    #: The clips the app shows as synced; None: the clips the solver marked synced.
+    synced_ids: frozenset[int] | None = None
+
+    def not_synced_mode(self) -> str:
+        mode = self.not_synced or ("place" if self.include_uncertain else "omit")
+        if mode not in NOT_SYNCED_MODES:
+            raise ExportError(f"not_synced must be one of {', '.join(NOT_SYNCED_MODES)}, not {mode!r}")
+        return mode
 
 
 @dataclass(frozen=True)
@@ -105,8 +124,9 @@ class ExportClip:
     status: str
     method: str
     drift_ppm: float = 0.0
-    #: Why the editor should check this clip's position (it needs review), shown as a marker on it in the NLE.
-    review_note: str | None = None
+    #: False: the clip is not synced (its position is a guess, or it was put after the synced timeline); the XML
+    #: gives it the NLE's red label.
+    synced: bool = True
 
     @property
     def duration_frames(self) -> int:
@@ -186,8 +206,9 @@ class ExportSequence:
                 "placed_s": float(c.placed_start(self.rate, subframe_in=subframe_in)),
                 "error_ms": round(float(err) * 1000, 3),
                 "status": c.status,
+                "synced": c.synced,
             })  # fmt: skip
-        errors = [abs(c["error_ms"]) for c in clips]
+        errors = [abs(c["error_ms"]) for c in clips if c["synced"]]
         return {
             "sequence": {
                 "name": self.name,
@@ -201,6 +222,7 @@ class ExportSequence:
             },
             "clips": clips,
             "max_error_ms": max(errors, default=0.0),
+            "not_synced": sum(not c.synced for c in self.clips),
             "skipped": [{"clip_id": s.clip_id, "name": s.name, "reason": s.reason} for s in self.skipped],
             "warnings": list(self.warnings),
         }
@@ -299,14 +321,6 @@ def _sequence_start(options: ExportOptions, rate: Fraction) -> tuple[int, bool]:
         raise ExportError(f"invalid start timecode {options.start_timecode!r}: {exc}") from exc
 
 
-def _skip_reason(clip: TimelineClip, options: ExportOptions) -> str | None:
-    if clip.media_status != "online":
-        return f"media {clip.media_status}"
-    if clip.status == "needs_review" and not options.include_uncertain:
-        return "uncertain placement (not included)"
-    return None
-
-
 def build_sequence(
     timeline: Timeline, rows: Mapping[int, ClipRow], options: ExportOptions | None = None
 ) -> ExportSequence:
@@ -318,22 +332,37 @@ def build_sequence(
             raise ExportError("nothing to export: synchronise first")
         raise ExportError(f"the timeline has no group {options.group}")
 
-    skipped: list[Skipped] = []
-    for g in timeline.groups:
-        if g.group != options.group:
-            reason = f"not linked to the exported group (group {g.group})"
-            skipped += [Skipped(c.clip_id, c.name, reason) for c in g.clips]
-    skipped += [Skipped(c.clip_id, c.name, "not placed") for c in timeline.unsynced]
+    mode = options.not_synced_mode()
 
-    chosen: list[tuple[TimelineClip, ClipRow]] = []
+    def synced(clip: TimelineClip) -> bool:
+        if options.synced_ids is not None:
+            return clip.clip_id in options.synced_ids
+        return clip.status == "synced"
+
+    # In place on the synced timeline, or after it (mode "end").
+    skipped: list[Skipped] = []
+    in_place: list[tuple[TimelineClip, ClipRow]] = []
+    at_end: list[tuple[TimelineClip, ClipRow]] = []
+    others = [(c, f"not linked to the exported group (group {g.group})") for g in timeline.groups
+              if g.group != options.group for c in g.clips]  # fmt: skip
+    others += [(c, "not placed") for c in timeline.unsynced]
     for clip in group.clips:
-        reason = _skip_reason(clip, options)
-        if reason:
-            skipped.append(Skipped(clip.clip_id, clip.name, reason))
+        if clip.media_status != "online":
+            skipped.append(Skipped(clip.clip_id, clip.name, f"media {clip.media_status}"))
         elif clip.clip_id not in rows:
             skipped.append(Skipped(clip.clip_id, clip.name, "missing from the project"))
+        elif synced(clip) or mode == "place":
+            in_place.append((clip, rows[clip.clip_id]))
+        elif mode == "end":
+            at_end.append((clip, rows[clip.clip_id]))
         else:
-            chosen.append((clip, rows[clip.clip_id]))
+            skipped.append(Skipped(clip.clip_id, clip.name, "not synced (left out)"))
+    for clip, reason in others:
+        if mode == "end" and clip.media_status == "online" and clip.clip_id in rows:
+            at_end.append((clip, rows[clip.clip_id]))
+        else:
+            skipped.append(Skipped(clip.clip_id, clip.name, reason if mode != "omit" else "not synced (left out)"))
+    chosen = in_place + at_end
     if not chosen:
         raise ExportError("no clips to export")
 
@@ -349,37 +378,80 @@ def build_sequence(
             src = source_media(f"file-{len(media) + 1}", row.info, _export_stream(row))
             media[row.path] = replace(src, bin=bins.get(row.path, ()))
 
-    # Tracks follow the timeline's device tracks: cameras first, then recorders.
+    # Tracks follow the timeline's device tracks (cameras first, then recorders), then tracks for the devices of
+    # clips after the synced timeline that have none in this group.
+    specs: list[tuple[object, str, str]] = []  # (key, track name, device name)
+    for t in group.tracks:
+        specs.append((t.index, t.device_name if t.lane == 0 else f"{t.device_name} ({t.lane + 1})", t.device_name))
+    main_track = {t.device_id: t.index for t in group.tracks if t.lane == 0 and t.device_id is not None}
+    extra: dict[object, tuple[int, str]] = {}
+
+    def track_key(clip: TimelineClip, after: bool) -> object:
+        if clip.track is not None and (not after or clip.group == options.group):
+            return clip.track
+        if clip.device_id in main_track:
+            return main_track[clip.device_id]
+        key = ("device", clip.device_id if clip.device_id is not None else f"clip-{clip.clip_id}")
+        extra.setdefault(key, (_KIND_ORDER.get(clip.kind, 3), clip.device_name))
+        return key
+
+    keyed = [(track_key(clip, False), clip, row, False) for clip, row in in_place]
+    keyed += [(track_key(clip, True), clip, row, True) for clip, row in at_end]
+    for key, (_, name) in sorted(extra.items(), key=lambda kv: (kv[1], str(kv[0]))):
+        specs.append((key, name, name))
+    by_track: dict[object, list[tuple[TimelineClip, ClipRow]]] = {}
+    for key, clip, row, _ in keyed:
+        by_track.setdefault(key, []).append((clip, row))
     video_tracks: list[Track] = []
     audio_tracks: list[Track] = []
-    video_index: dict[int, int] = {}
-    audio_index: dict[int, list[int]] = {}
-    by_track: dict[int, list[tuple[TimelineClip, ClipRow]]] = {}
-    for clip, row in chosen:
-        by_track.setdefault(clip.track if clip.track is not None else -1, []).append((clip, row))
-    for t in group.tracks:
-        members = by_track.get(t.index, [])
+    video_index: dict[object, int] = {}
+    audio_index: dict[object, list[int]] = {}
+    for key, name, device_name in specs:
+        members = by_track.get(key, [])
         if not members:
             continue
-        name = t.device_name if t.lane == 0 else f"{t.device_name} ({t.lane + 1})"
         if any(clip.has_video and media[row.path].has_video for clip, row in members):
-            video_tracks.append(Track(len(video_tracks) + 1, "video", name, t.device_name))
-            video_index[t.index] = len(video_tracks)
+            video_tracks.append(Track(len(video_tracks) + 1, "video", name, device_name))
+            video_index[key] = len(video_tracks)
         channels = max(media[row.path].audio_channels for _, row in members)
         names = next((media[row.path].track_names for _, row in members if media[row.path].track_names), ())
-        audio_index[t.index] = []
+        audio_index[key] = []
         for ch in range(channels):
             label = names[ch] if ch < len(names) else str(ch + 1)
-            audio_tracks.append(Track(len(audio_tracks) + 1, "audio", f"{name} {label}", t.device_name, ch + 1))
-            audio_index[t.index].append(len(audio_tracks))
+            audio_tracks.append(Track(len(audio_tracks) + 1, "audio", f"{name} {label}", device_name, ch + 1))
+            audio_index[key].append(len(audio_tracks))
 
     warnings: list[str] = []
     clips: list[ExportClip] = []
-    for clip, row in chosen:
+
+    def add(key: object, clip: TimelineClip, row: ClipRow, first: int, last: int, in_point: Fraction,
+            true_start: Fraction, is_synced: bool) -> None:  # fmt: skip
+        src = media[row.path]
+        video = clip.has_video and src.has_video
+        clips.append(
+            ExportClip(
+                clip_id=clip.clip_id,
+                name=clip.name,
+                media=src,
+                video_track=video_index.get(key) if video else None,
+                audio_tracks=tuple(audio_index.get(key, [])[: src.audio_channels]),
+                start_frame=first,
+                end_frame=last,
+                in_point=in_point,
+                true_start=true_start,
+                status=clip.status,
+                method=clip.method,
+                drift_ppm=clip.drift_ppm,
+                synced=is_synced,
+            )
+        )
+
+    for key, clip, row, after in keyed:
+        if after:
+            continue
         src = media[row.path]
         true_start = _seconds(clip.start_s)  # type: ignore[arg-type]
-        video = clip.has_video and src.has_video
-        if video:
+        if clip.has_video and src.has_video:
             first = _round_half_up(true_start * rate)
             in_point = Fraction(0)
             last = first + media_frames(src, rate)
@@ -392,35 +464,34 @@ def build_sequence(
         if last <= first:
             skipped.append(Skipped(clip.clip_id, clip.name, "shorter than one sequence frame"))
             continue
-        track_audio = audio_index.get(clip.track if clip.track is not None else -1, [])
-        clips.append(
-            ExportClip(
-                clip_id=clip.clip_id,
-                name=clip.name,
-                media=src,
-                video_track=video_index.get(clip.track) if video and clip.track is not None else None,
-                audio_tracks=tuple(track_audio[: src.audio_channels]),
-                start_frame=first,
-                end_frame=last,
-                in_point=in_point,
-                true_start=true_start,
-                status=clip.status,
-                method=clip.method,
-                drift_ppm=clip.drift_ppm,
-                review_note=review_note(clip.method) if clip.status == "needs_review" else None,
-            )
-        )
-        if clip.status == "needs_review":
-            how = _METHOD_TEXT.get(clip.method, clip.method)
-            warnings.append(f"{clip.name}: placed by {how}; check it in the NLE.")
+        add(key, clip, row, first, last, in_point, true_start, synced(clip))
         if row.info.primary_video and row.info.primary_video.is_vfr:
             warnings.append(f"{clip.name}: variable frame rate; the NLE may conform it and shift it slightly.")
         half_span = abs(clip.drift_ppm) * 1e-6 * clip.duration_s / 2
-        if half_span > 0.5 / float(rate):
+        if half_span > 0.5 / float(rate) and synced(clip):
             warnings.append(
                 f"{clip.name}: its clock drifts {abs(clip.drift_ppm):.1f} ppm; it is aligned in the middle and "
                 f"{half_span * 1000:.0f} ms off at its ends."
             )
+
+    # After the synced timeline: each track's clips one after another, in the order they were recorded.
+    markers: list[SequenceMarker] = []
+    if at_end:
+        block = max((c.end_frame for c in clips), default=0)
+        block += round(END_GAP_S * rate) if clips else 0
+        markers.append(SequenceMarker(block, "Not synced"))
+        cursor: dict[object, int] = {}
+        for key, clip, row, after in sorted(keyed, key=lambda k: _recorded(k[2])):
+            if not after:
+                continue
+            src = media[row.path]
+            frames = media_frames(src, rate) if clip.has_video and src.has_video else math.floor(src.duration * rate)
+            if frames <= 0:
+                skipped.append(Skipped(clip.clip_id, clip.name, "shorter than one sequence frame"))
+                continue
+            first = cursor.get(key, block)
+            add(key, clip, row, first, first + frames, Fraction(0), Fraction(first) / rate, False)
+            cursor[key] = first + frames + round(END_SPACING_S * rate)
 
     clips = _resolve_rounding_overlaps(clips, warnings)
     duration = max(c.end_frame for c in clips)
@@ -439,28 +510,17 @@ def build_sequence(
         media=tuple(media.values()),
         skipped=tuple(skipped),
         warnings=tuple(warnings),
+        markers=tuple(markers),
     )
 
 
-_METHOD_TEXT = {
-    "audio": "an uncertain audio match",
-    "metadata": "the camera clock only",
-    "timecode": "timecode that disagrees with the audio",
-    "manual": "hand",
-}
-
-#: Marker text on a clip that needs review, by how it was placed: what to check in the NLE.
-_REVIEW_NOTES = {
-    "metadata": "Check sync: placed by the camera clock only, which can be up to a second off. Line it up by eye or "
-    "by its sound.",
-    "audio": "Check sync: placed by an uncertain audio match.",
-    "timecode": "Check sync: its timecode disagrees with its audio.",
-    "ai": "Check sync: proposed by AI sync from speech and picture.",
-}
+_KIND_ORDER = {"camera": 0, "phone": 1, "drone": 2, "other": 3, "recorder": 4}
 
 
-def review_note(method: str) -> str:
-    return _REVIEW_NOTES.get(method, "Check sync: Syncora is not sure of this clip's position.")
+def _recorded(row: ClipRow) -> tuple[float, str]:
+    """When a file was recorded (files without a recording time last), then its name."""
+    created = row.info.creation_time
+    return (created.timestamp() if created is not None else math.inf, row.name)
 
 
 def _resolve_rounding_overlaps(clips: list[ExportClip], warnings: list[str]) -> list[ExportClip]:

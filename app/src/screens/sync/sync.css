@@ -261,6 +261,32 @@
   gap: 8px;
   align-items: center;
 }
+.sy-results__synced {
+  color: var(--sy-status-success);
+}
+.sy-results__not-synced {
+  color: var(--sy-status-error);
+}
+.sy-categories.sy-categories--two {
+  grid-template-columns: repeat(2, 1fr);
+}
+.sy-category--synced .sy-category__n {
+  color: var(--sy-status-success);
+}
+.sy-category--not-synced .sy-category__n {
+  color: var(--sy-status-error);
+}
+/* Share of a source's clips that are synced: green, the rest red. */
+.sy-results__share {
+  display: block;
+  height: 8px;
+  background: color-mix(in srgb, var(--sy-status-error) 55%, transparent);
+}
+.sy-results__share > span {
+  display: block;
+  height: 100%;
+  background: var(--sy-status-success);
+}
 .sy-results__actions {
   display: flex;
   gap: 8px;

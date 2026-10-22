@@ -1,4 +1,5 @@
 // SH-2 status bar: engine and media state on the left, project facts on the right.
+import { notSyncedTotal } from "../screens/media/labels";
 import { useApp } from "../state/store";
 import { useProd } from "../state/production";
 
@@ -7,7 +8,7 @@ export function StatusBar() {
   const project = useApp((s) => s.project);
   const offline = useProd((s) => s.offline?.volumes.reduce((n, v) => n + (v.ignored ? 0 : v.count), 0) ?? 0);
   const pipeline = useProd((s) => s.pipeline);
-  const review = useProd((s) => s.summary?.counts.review ?? 0);
+  const notSynced = useProd((s) => notSyncedTotal(s.summary));
   const selection = useProd((s) => s.selection.size);
   // The live media index: it counts clips while an import is still running.
   const clips = useProd((s) => (s.indexVersion >= 0 ? s.rows.length : null));
@@ -42,7 +43,11 @@ export function StatusBar() {
           {job.message || "Working…"} · {Math.round(job.progress * 100)}%
         </span>
       )}
-      {review > 0 && <span className="sy-statusbar__item sy-statusbar__item--warn">{review} need review</span>}
+      {notSynced > 0 && (
+        <span className="sy-statusbar__item sy-statusbar__item--error" data-testid="statusbar-not-synced">
+          {notSynced.toLocaleString()} not synced
+        </span>
+      )}
       {selection > 0 && <span className="sy-statusbar__item">{selection} selected</span>}
       <span className="sy-statusbar__right">
         {project && (

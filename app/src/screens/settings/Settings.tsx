@@ -6,6 +6,7 @@ import { call } from "../../api/client";
 import type { AiModel, CacheInfo, SystemResources, WorkerPlan } from "../../api/contract";
 import { Button, Segmented, Select, SettingRow, Toggle, shortcut } from "../../design-system/components";
 import {
+  NOT_SYNCED_CHOICES,
   loadSettings as loadExportDefaults,
   saveSettings as saveExportDefaults,
 } from "../../features/export/ExportDialog";
@@ -771,13 +772,15 @@ function ExportPane() {
         />
       </SettingRow>
       <SettingRow
-        title="Include clips to review"
-        description="Clips below the review threshold are exported where Syncora placed them (on their own tracks); off leaves them out."
+        title="Clips not synced"
+        description="Clips that are not synced get a red label in the editor. Put them after the synced timeline, keep them where Syncora put them, or leave them out."
       >
-        <Toggle
-          label="Include clips to review"
-          on={defaults.includeUncertain}
-          onChange={(on) => change({ includeUncertain: on })}
+        <Select
+          label="Clips not synced"
+          value={defaults.notSynced}
+          width={240}
+          onChange={(v) => change({ notSynced: v })}
+          options={NOT_SYNCED_CHOICES}
         />
       </SettingRow>
       <SettingRow

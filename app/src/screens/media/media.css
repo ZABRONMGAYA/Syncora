@@ -55,6 +55,10 @@
   background: var(--sy-status-warning);
   color: var(--sy-brand-secondary);
 }
+.sy-bin__chip--error {
+  background: var(--sy-status-error);
+  color: var(--sy-brand-secondary);
+}
 .sy-bin__chip--audio {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--sy-camera-audio-letter);

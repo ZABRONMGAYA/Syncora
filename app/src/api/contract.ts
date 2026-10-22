@@ -489,7 +489,11 @@ export interface ExportOptions {
   name?: string;
   /** Put each file in a bin that mirrors the folder it was imported from (default: on). */
   bins?: boolean;
+  /** Clips that are not synced (labelled red): after the synced timeline, where they were put, or left out. */
+  not_synced?: NotSyncedPlacement;
 }
+
+export type NotSyncedPlacement = "end" | "place" | "omit";
 
 export interface ExportReport {
   path: string;
@@ -512,7 +516,11 @@ export interface ExportReport {
     placed_s: number;
     error_ms: number;
     status: PlacementStatus;
+    /** False: not synced (red in the NLE). */
+    synced: boolean;
   }[];
+  /** How many exported clips are not synced. */
+  not_synced: number;
   /** Largest placement error as the format's readers see it (xmeml: in points rounded to frames). */
   max_error_ms: number;
   /** xmeml only: in Premiere Pro, which reads the sub-frame in points. */

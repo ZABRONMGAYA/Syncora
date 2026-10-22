@@ -1145,14 +1145,8 @@
             <pproTicksOut>38098124064000</pproTicksOut>
             <alphatype>none</alphatype>
             <file id="file-3" />
-            <marker>
-              <name>Check sync</name>
-              <comment>Check sync: placed by an uncertain audio match.</comment>
-              <in>0</in>
-              <out>-1</out>
-            </marker>
             <labels>
-              <label2>Mango</label2>
+              <label2>Rose</label2>
             </labels>
             <sourcetrack>
               <mediatype>video</mediatype>
@@ -1497,7 +1491,7 @@
             <pproTicksOut>38098124064000</pproTicksOut>
             <file id="file-3" />
             <labels>
-              <label2>Mango</label2>
+              <label2>Rose</label2>
             </labels>
             <sourcetrack>
               <mediatype>audio</mediatype>
@@ -1546,7 +1540,7 @@
             <pproTicksOut>38098124064000</pproTicksOut>
             <file id="file-3" />
             <labels>
-              <label2>Mango</label2>
+              <label2>Rose</label2>
             </labels>
             <sourcetrack>
               <mediatype>audio</mediatype>

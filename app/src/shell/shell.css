@@ -104,6 +104,9 @@
 .sy-statusbar__item--warn {
   color: var(--sy-status-warning);
 }
+.sy-statusbar__item--error {
+  color: var(--sy-status-error);
+}
 .sy-statusbar__right {
   margin-left: auto;
   display: flex;

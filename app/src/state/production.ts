@@ -14,6 +14,7 @@ import type {
   SyncSummary,
 } from "../api/contract";
 import { matches, parseQuery, rowsFromIndex } from "../lib/query";
+import { isNotSynced, isSynced } from "../screens/media/labels";
 import { useApp } from "./store";
 
 export type Stage = "media" | "sync" | "analyze" | "timeline" | "export";
@@ -34,6 +35,8 @@ export type SettingsCategory =
   | "about";
 export type Bin =
   | "all"
+  | "synced"
+  | "not_synced"
   | "review"
   | "unmatched"
   | "offline"
@@ -368,6 +371,8 @@ export function visibleRows(state: Pick<ProdState, "rows" | "bin" | "query">): M
     if (bin !== "all") {
       if (bin.startsWith("device:") && r.device_id !== Number(bin.slice(7))) return false;
       if (bin.startsWith("session:") && r.session_id !== Number(bin.slice(8))) return false;
+      if (bin === "synced" && !isSynced(r)) return false;
+      if (bin === "not_synced" && !isNotSynced(r)) return false;
       if (bin === "review" && r.category !== "review") return false;
       if (bin === "unmatched" && !(r.session_id === null && r.category !== "pending")) return false;
       if (bin === "offline" && r.media_status === "online") return false;

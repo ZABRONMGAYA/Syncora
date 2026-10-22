@@ -218,7 +218,8 @@ def test_report_lists_errors_and_warnings(wedding):
     assert format_report(seq, "fcpxml")["clips"][0]["name"] == "GH010042.MP4"
     assert abs({c["name"]: c for c in format_report(seq, "fcpxml")["clips"]}["230614_001.WAV"]["error_ms"]) < 0.011
     warnings = " ".join(report["warnings"])
-    assert "C0001 #2.MP4: placed by an uncertain audio match" in warnings
+    assert "C0001 #2.MP4" not in warnings  # a clip that is not synced is labelled red, not explained
+    assert report["not_synced"] == 1 and by_name["C0001 #2.MP4"]["synced"] is False
     assert "A002.MOV: its clock drifts 12.0 ppm" not in warnings  # 1.2 ms at the ends: below half a frame
 
 
@@ -578,21 +579,68 @@ def test_fcpxml_keywords_have_no_commas():
     assert keyword(("Smith, Jones", "Cam A")) == "Smith  Jones / Cam A"
 
 
-def test_clips_to_check_are_marked_in_the_nle(wedding):
-    seq = build_sequence(*wedding)
-    cam_b = clip(seq, "C0001 #2.MP4")  # placed by an ambiguous audio match: needs review
-    assert cam_b.review_note == "Check sync: placed by an uncertain audio match."
-    assert all(c.review_note is None for c in seq.clips if c.status != "needs_review")
-
+def test_clips_that_are_not_synced_are_red_in_the_nle(wedding):
+    seq = build_sequence(*wedding)  # by default where synchronisation put them
+    assert not clip(seq, "C0001 #2.MP4").synced  # placed by an ambiguous audio match
+    assert all(c.synced for c in seq.clips if c.name != "C0001 #2.MP4")
     sequence = ET.fromstring(write_xmeml(seq)).find("sequence")
-    items = [i for i in sequence.iter("clipitem") if i.findtext("name") == "C0001 #2.MP4"]
-    assert {i.findtext("labels/label2") for i in items} == {"Mango"}
-    markers = [m for i in items for m in i.findall("marker")]
-    assert len(markers) == 1 and markers[0].findtext("comment") == cam_b.review_note
-    assert all(i.find("labels") is None for i in sequence.iter("clipitem") if i.findtext("name") != "C0001 #2.MP4")
-
+    labels = {i.findtext("name"): i.findtext("labels/label2") for i in sequence.iter("clipitem")}
+    assert labels.pop("C0001 #2.MP4") == "Rose"  # Premiere Pro's red
+    assert set(labels.values()) == {None}
+    assert not list(sequence.iter("marker"))  # no messages on the clips
     fcp = ET.fromstring(write_fcpxml(seq)).find("library/event/project/sequence")
-    (fcp_clip,) = [c for c in fcp.iter("asset-clip") if c.get("name") == "C0001 #2.MP4"]
-    assert fcp_clip.find("keyword").get("value") == "Check sync"
-    assert fcp_clip.find("marker").get("value") == cam_b.review_note
-    assert fcp_clip.find("marker").get("start") == fcp_clip.get("start")
+    keyworded = {c.get("name") for c in fcp.iter("asset-clip") if c.find("keyword") is not None}
+    assert keyworded == {"C0001 #2.MP4"}
+    assert not list(fcp.iter("marker"))
+
+
+def test_clips_that_are_not_synced_can_go_to_the_end(wedding):
+    timeline, rows = wedding
+    in_place = build_sequence(timeline, rows)
+    seq = build_sequence(timeline, rows, ExportOptions(not_synced="end"))
+    rate = seq.rate
+    synced = [c for c in seq.clips if c.synced]
+    late = sorted((c for c in seq.clips if not c.synced), key=lambda c: (c.start_frame, c.name))
+    # Every clip that is not synced: one placed by an uncertain match, one synced only to another phone clip, one
+    # never placed. Offline media still cannot be exported.
+    assert {c.name for c in late} == {"C0001 #2.MP4", "IMG_0001.MOV", "IMG_0002.MOV"}
+    assert {s.name for s in seq.skipped} == {"A003.MOV"}
+    # The synced clips stay exactly where they were.
+    before = {c.name: (c.start_frame, c.end_frame, c.in_point) for c in in_place.clips if c.synced}
+    assert {c.name: (c.start_frame, c.end_frame, c.in_point) for c in synced} == before
+    # After the synced timeline and a 5 s gap, marked; each from its first frame.
+    block = max(c.end_frame for c in synced) + round(5 * rate)
+    assert [(m.frame, m.name) for m in seq.markers] == [(block, "Not synced")]
+    assert min(c.start_frame for c in late) == block and all(c.in_point == 0 for c in late)
+    cam_b = clip(seq, "C0001 #2.MP4")
+    assert cam_b.start_frame == block and cam_b.video_track == clip(in_place, "C0001 #2.MP4").video_track
+    # The phone has no track in the synced timeline: a track of its own, its clips one after another.
+    phone = [c for c in late if c.name.startswith("IMG")]
+    assert seq.video_tracks[-1].name == "Phone" and {c.video_track for c in phone} == {len(seq.video_tracks)}
+    assert phone[1].start_frame == phone[0].end_frame + round(1 * rate)
+    sequence = ET.fromstring(write_xmeml(seq)).find("sequence")
+    red = {i.findtext("name") for i in sequence.iter("clipitem") if i.findtext("labels/label2") == "Rose"}
+    assert red == {c.name for c in late}
+    assert sequence.find("marker/name").text == "Not synced"
+    assert format_report(seq, "xmeml")["not_synced"] == 3
+
+
+def test_clips_that_are_not_synced_can_be_left_out(wedding):
+    seq = build_sequence(*wedding, ExportOptions(not_synced="omit"))
+    assert all(c.synced for c in seq.clips) and not seq.markers
+    assert {s.name: s.reason for s in seq.skipped} == {
+        "C0001 #2.MP4": "not synced (left out)",
+        "IMG_0001.MOV": "not synced (left out)",
+        "IMG_0002.MOV": "not synced (left out)",
+        "A003.MOV": "media offline",
+    }
+    with pytest.raises(ExportError, match="not_synced must be one of"):
+        build_sequence(*wedding, ExportOptions(not_synced="later"))
+
+
+def test_synced_means_what_the_app_shows(wedding):
+    # The results' Synced category decides (a clip below the review threshold is not synced, whatever the solver).
+    timeline, rows = wedding
+    shown_synced = frozenset(c.clip_id for g in timeline.groups for c in g.clips) - {2}
+    seq = build_sequence(timeline, rows, ExportOptions(synced_ids=shown_synced))
+    assert not clip(seq, "A001.MOV").synced and clip(seq, "C0001 #2.MP4").synced

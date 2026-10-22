@@ -27,7 +27,16 @@ import { useAnalyze } from "../../state/analyze";
 import { type Bin, useProd, visibleRows } from "../../state/production";
 import { useApp } from "../../state/store";
 import { useThumbs } from "../../state/thumbs";
-import { CATEGORY_LABEL, cardMeta, deviceLetters, formatBytes, rowStatus, squareFor } from "./labels";
+import {
+  CATEGORY_LABEL,
+  cardMeta,
+  deviceLetters,
+  formatBytes,
+  isNotSynced,
+  isSynced,
+  rowStatus,
+  squareFor,
+} from "./labels";
 
 const LIST_ROW = 36;
 const CARD_MIN = 200;
@@ -77,10 +86,10 @@ function Bins() {
   const bin = useProd((s) => s.bin);
   const letters = useMemo(() => deviceLetters(devices), [devices]);
   const counts = useMemo(() => {
-    const c = { review: 0, unmatched: 0, offline: 0, duplicates: 0, failed: 0 };
+    const c = { synced: 0, notSynced: 0, offline: 0, duplicates: 0, failed: 0 };
     for (const r of rows) {
-      if (r.category === "review") c.review++;
-      if (r.session_id === null && r.category !== "pending") c.unmatched++;
+      if (isSynced(r)) c.synced++;
+      if (isNotSynced(r)) c.notSynced++;
       if (r.media_status !== "online") c.offline++;
       if (r.duplicate_of !== null) c.duplicates++;
       if (r.category === "failed") c.failed++;
@@ -88,7 +97,7 @@ function Bins() {
     return c;
   }, [rows]);
 
-  const item = (id: Bin, label: string, count: number, chip?: { text: string; tone?: "warn" | "audio" }) => (
+  const item = (id: Bin, label: string, count: number, chip?: { text: string; tone?: "warn" | "error" | "audio" }) => (
     <button
       key={id}
       type="button"
@@ -122,9 +131,8 @@ function Bins() {
       {sessions.length > 0 && <div className="sy-bins__group">Sessions</div>}
       {sessions.map((s, k) => item(`session:${s.id}`, sessionLabel(s), s.clips, { text: String(k + 1) }))}
       <div className="sy-bins__group">Status</div>
-      {item("unmatched", "Unmatched", counts.unmatched)}
-      {item("review", "Needs review", counts.review, { text: "!", tone: "warn" })}
-      {item("failed", "Failed", counts.failed)}
+      {item("synced", "Synced", counts.synced)}
+      {item("not_synced", "Not synced", counts.notSynced, { text: "×", tone: "error" })}
       {item("offline", "Offline", counts.offline)}
       {item("duplicates", "Duplicates", counts.duplicates)}
     </aside>
@@ -524,7 +532,7 @@ function MediaGrid({ rows, letters, sessions, threshold }: ViewProps) {
                   )}
                 </div>
               </div>
-              <span className="sy-visually-hidden">{rowStatus(row, threshold)}</span>
+              <span className="sy-visually-hidden">{rowStatus(row)}</span>
             </div>
           );
         })}
@@ -569,7 +577,7 @@ function MediaList({ rows, letters, sessions, threshold }: ViewProps) {
         <div style={{ height: total, position: "relative" }}>
           {rows.slice(first, last).map((row, k) => {
             const l = row.device_id !== null ? letters.get(row.device_id) : undefined;
-            const status = rowStatus(row, threshold);
+            const status = rowStatus(row);
             const session = row.session_id !== null ? sessions.get(row.session_id) : undefined;
             return (
               <div
@@ -612,10 +620,7 @@ function MediaList({ rows, letters, sessions, threshold }: ViewProps) {
                   {session ? session.label : "Unmatched"} · {CATEGORY_LABEL[row.category]}
                 </span>
                 <span>
-                  <SyncBadge
-                    status={status}
-                    confidence={["high", "good", "review"].includes(status) ? row.confidence : undefined}
-                  />
+                  <SyncBadge status={status} />
                 </span>
               </div>
             );

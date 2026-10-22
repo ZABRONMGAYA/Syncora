@@ -1,5 +1,5 @@
 // Device letters, card metadata and status words shared by the media and sync screens.
-import type { Device, MediaRow, Session } from "../../api/contract";
+import type { Device, MediaRow, Session, SyncSummary } from "../../api/contract";
 import type { SyncStatus } from "../../design-system/components";
 import { rateLabel } from "../../lib/format";
 
@@ -55,50 +55,51 @@ export function cardMeta(row: MediaRow, sessions: Map<number, Session>): string 
   return parts.join(" · ");
 }
 
-/** Clip → badge status. The confidence number goes with every badge except reference, pending and skipped. */
-export function rowStatus(row: MediaRow, threshold: number): SyncStatus {
-  if (row.method === "reference") return "reference";
-  switch (row.category) {
-    case "confirmed":
-    case "high_confidence":
-      return "high";
-    case "synchronized":
-      return row.method === "manual" ? "good" : (row.confidence ?? 0) >= threshold ? "good" : "review";
-    case "review":
-      return "review";
-    case "failed":
-      return "failed";
-    case "skipped":
-      return "skipped";
-    case "pending":
-      return row.analysis === "running" || row.probe === "running" ? "running" : "none";
-    case "manual":
-      return "none";
-  }
+/** The categories the app shows as synced; every other placed, unplaced or unreadable clip is not synced. */
+export const SYNCED_CATEGORIES: ReadonlySet<MediaRow["category"]> = new Set([
+  "synchronized",
+  "confirmed",
+  "high_confidence",
+]);
+const NOT_SYNCED_CATEGORIES: ReadonlySet<MediaRow["category"]> = new Set(["review", "manual", "failed"]);
+
+export function isSynced(row: Pick<MediaRow, "category">): boolean {
+  return SYNCED_CATEGORIES.has(row.category);
+}
+
+export function isNotSynced(row: Pick<MediaRow, "category">): boolean {
+  return NOT_SYNCED_CATEGORIES.has(row.category);
+}
+
+/**
+ * Clips that are not synced, as the media browser lists them: placed without certainty, not placed, or failed
+ * after import. Files that could not be read at all never became clips (the import lists them) and do not count.
+ */
+export function notSyncedTotal(summary: Pick<SyncSummary, "counts" | "unreadable_files"> | null | undefined): number {
+  if (!summary) return 0;
+  const c = summary.counts;
+  return (c.review ?? 0) + (c.manual ?? 0) + Math.max(0, (c.failed ?? 0) - (summary.unreadable_files ?? 0));
+}
+
+/** Clip → badge status: synced or not synced (until the first sync: analysing, or not synced yet). */
+export function rowStatus(row: MediaRow): SyncStatus {
+  if (isSynced(row)) return "synced";
+  if (isNotSynced(row)) return "unsynced";
+  if (row.category === "skipped") return "skipped";
+  return row.analysis === "running" || row.probe === "running" ? "running" : "none";
 }
 
 export function squareFor(row: MediaRow): "ok" | "review" | "failed" | "none" {
-  switch (row.category) {
-    case "confirmed":
-    case "high_confidence":
-    case "synchronized":
-      return "ok";
-    case "review":
-      return "review";
-    case "failed":
-      return "failed";
-    default:
-      return "none";
-  }
+  return isSynced(row) ? "ok" : isNotSynced(row) ? "failed" : "none";
 }
 
 export const CATEGORY_LABEL: Record<MediaRow["category"], string> = {
-  synchronized: "Synchronized",
-  confirmed: "Confirmed",
-  high_confidence: "High confidence",
-  review: "Review recommended",
-  manual: "Manual sync required",
-  failed: "Failed",
+  synchronized: "Synced",
+  confirmed: "Synced",
+  high_confidence: "Synced",
+  review: "Not synced",
+  manual: "Not synced",
+  failed: "Not synced",
   skipped: "Skipped",
   pending: "Not synced yet",
 };

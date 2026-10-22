@@ -173,12 +173,16 @@ test("renders only what is on screen and finds clips by search", async () => {
 test("synchronises the production and sorts the results", async () => {
   await page.getByTestId("sync").click();
   await expect(page.getByTestId("results")).toBeVisible({ timeout: 600_000 });
-  await expect(page.getByTestId("category-failed")).toContainText(String(truth.counts["damaged"]));
-  await expect(page.getByTestId("category-skipped")).toContainText(String(truth.counts["duplicate"]));
-  const synced = Number(
-    (await page.getByTestId("category-synchronized").locator(".sy-category__n").textContent())!.replace(/,/g, ""),
-  );
+  // Two results only: synced, or not (never placed, or placed without certainty).
+  const count = async (id: string) =>
+    Number((await page.getByTestId(id).locator(".sy-category__n").textContent())!.replace(/,/g, ""));
+  const synced = await count("category-synced");
   expect(synced).toBeGreaterThanOrEqual(truth.sync - truth.counts["duplicate"]!);
+  const notSynced = await count("category-not-synced");
+  const withoutSound = truth.counts["no-audio"]! + truth.counts["silent"]! + truth.counts["unrelated"]!;
+  // Damaged files never became clips: the import lists them, the results do not count them.
+  expect(notSynced).toBeGreaterThanOrEqual(withoutSound);
+  await expect(page.getByTestId("results")).not.toContainText(/review/i);
   await shot("results");
   // The timeline draws the synchronised sessions; clips placed confidently in another session are not listed
   // for review (they all used to be).
@@ -187,25 +191,18 @@ test("synchronises the production and sorts the results", async () => {
   const toReview = Number((await page.getByTestId("review-queue").locator(".count").textContent())!.replace(/\D/g, ""));
   expect(toReview).toBeLessThan(synced / 2);
   await page.getByTestId("stage-sync").click();
-  // Review and manual-sync clips open in the media browser, filtered. (Since 1.3 this production usually has
-  // nothing left for review: every clip with usable sound is placed exactly; the clips without are manual.)
-  for (const [category, query] of [
-    ["review", "review"],
-    ["manual", "manual"],
+  // Each result opens its clips in the media browser, filtered.
+  for (const [id, query, n] of [
+    ["category-synced", "synced", synced],
+    ["category-not-synced", "not synced", notSynced],
   ] as const) {
-    const n = Number(
-      (await page.getByTestId(`category-${category}`).locator(".sy-category__n").textContent())!.replace(/,/g, ""),
-    );
-    await page.getByTestId(`category-${category}`).click();
+    await page.getByTestId(id).click();
     await expect(page.getByTestId("media-search")).toHaveValue(query);
     await expect.poll(shownClips).toBe(n);
     await page.getByTestId("media-search").fill("");
     await page.getByTestId("stage-sync").click();
   }
-  const manual = Number(
-    (await page.getByTestId("category-manual").locator(".sy-category__n").textContent())!.replace(/,/g, ""),
-  );
-  expect(manual).toBe(truth.counts["no-audio"]! + truth.counts["silent"]! + truth.counts["unrelated"]!);
+  await expect(page.getByTestId("statusbar-not-synced")).toHaveText(`${notSynced} not synced`);
   await page.getByTestId("stage-media").click(); // where the next steps start
 });
 

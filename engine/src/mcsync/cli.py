@@ -145,6 +145,7 @@ def _export(service, output: str, args: argparse.Namespace) -> dict:  # noqa: AN
         start_timecode=args.start_tc,
         include_uncertain=not args.exclude_uncertain,
         bins=not args.no_bins,
+        not_synced=args.not_synced,
     )
 
 
@@ -218,7 +219,10 @@ def _add_export_options(p: argparse.ArgumentParser) -> None:
     p.add_argument("--format", choices=["xmeml", "fcpxml"], help="default: from the extension (.fcpxml or .xml)")
     p.add_argument("--rate", help="sequence frame rate, e.g. 25 or 24000/1001 (default: the most common)")
     p.add_argument("--start-tc", default="01:00:00:00", help="sequence start timecode (default 01:00:00:00)")
-    p.add_argument("--exclude-uncertain", action="store_true", help="leave out clips that need review")
+    p.add_argument("--exclude-uncertain", action="store_true", help="leave out clips that are not synced")
+    p.add_argument("--not-synced", choices=["end", "place", "omit"], default=None,
+                   help="clips that are not synced (red): at the end of the timeline, where they were put "
+                        "(default), or left out")  # fmt: skip
     p.add_argument("--no-bins", action="store_true", help="list files flat, not in bins that mirror their folders")
 
 

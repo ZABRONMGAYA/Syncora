@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.4.1 (not released yet)
+
+Results in two words: synced, or not synced.
+
+### Changed
+
+- **Synced or not synced.** The sync results, the status bar, the media browser and the clip badges show only
+  whether each clip is synced. Clips that used to be "review recommended", "manual sync required" or "failed" are
+  all *not synced*; the review callouts, confidence percentages and "Review N clips" button are gone from the
+  results.
+- **Red in Premiere Pro.** Exported clips that are not synced carry Premiere Pro's red label (Rose) instead of the
+  orange label and "Check sync" marker of 1.4.0; in FCPXML a "Not synced" keyword. Synced clips keep no label.
+
+### Added
+
+- **Where clips that are not synced go** (export dialog, Settings → Export, `mcsync export --not-synced`): *at the
+  end of the timeline* (default: after the synced clips and a 5-second gap, one after another on their camera's
+  track in recording order, with a "Not synced" marker where they begin; this includes clips that were never placed
+  or were synced only to each other), *where Syncora put them*, or *left out*. The earlier "Include clips that need
+  review" choice carries over (off becomes *left out*).
+
 ## 1.4.0
 
 An AI first cut for weddings and podcasts, exports that keep your folders as bins, a notice when a new version is

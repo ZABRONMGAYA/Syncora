@@ -95,6 +95,8 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "ai_fallback": False,  # place clips audio could not place by speech and visual evidence, as REVIEW
 }
 HIGH_CONFIDENCE = 0.95
+#: Result categories (``sync.summary``) the app shows as synced; every other placed or unplaced clip is not synced.
+SYNCED_CATEGORIES = frozenset({"synchronized", "confirmed", "high_confidence"})
 SPEECH_MODEL_IDS = {m.id for m in SPEECH_MODELS}
 
 
@@ -1151,15 +1153,23 @@ class EngineService(AiMethods, EditMethods):
         include_uncertain: bool = True,
         name: str | None = None,
         bins: bool = True,
+        not_synced: str | None = None,
     ) -> dict:
         """Write the synchronised timeline as FCP 7 XML ("xmeml") or FCPXML ("fcpxml"); return the report.
 
-        ``bins``: put every file in a bin that mirrors the folder it was imported from.
+        ``bins``: put every file in a bin that mirrors the folder it was imported from. ``not_synced``: where clips
+        that are not synced go ("end" of the timeline, "place" where they were put, "omit"); they are labelled red.
+        Synced means what the results show as synced (``sync.summary``).
         """
         self._require_idle({"sync"})
         project = self._require_project()
         rows = project.clips()
         timeline = build_timeline(rows, project.placements(), self._settings().get("reference_clip_id"))
+        index = self.media_index()
+        cols = {c: k for k, c in enumerate(index["columns"])}
+        synced_ids = frozenset(
+            int(r[cols["clip_id"]]) for r in index["rows"] if r[cols["category"]] in SYNCED_CATEGORIES
+        )
         options = ExportOptions(
             name=name or project.name,
             sequence_rate=parse_frame_rate(sequence_rate) if sequence_rate else None,
@@ -1168,6 +1178,8 @@ class EngineService(AiMethods, EditMethods):
             include_uncertain=include_uncertain,
             bins=bins,
             roots=tuple(r["path"] for r in project.import_roots()),
+            not_synced=not_synced,
+            synced_ids=synced_ids,
         )
         report = export_timeline(timeline, {r.id: r for r in rows}, format, path, options)
         project.record_export(format, path, report["sequence"]["rate"], report)

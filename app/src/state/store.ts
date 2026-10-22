@@ -28,6 +28,7 @@ import { type View, anchorClip, clampView, fitView, offsetForStart, zoomAround }
 import { forgetPeaks } from "../features/timeline/peaks";
 import { transcriptsChanged, useAnalyze } from "./analyze";
 import { useEdit } from "./edit";
+import { notSyncedTotal } from "../screens/media/labels";
 import { useProd } from "./production";
 import { useThumbs } from "./thumbs";
 
@@ -765,11 +766,8 @@ async function afterSync(result: { status: string; error?: string; timeline?: Ti
     const summary = useProd.getState().summary;
     if (summary) {
       const c = summary.counts;
-      const review = c.review;
-      app.toast(
-        "success",
-        `Synchronised ${c.synchronized} of ${summary.clips} clips${review ? `; ${review} to review` : ""}.`,
-      );
+      const notSynced = notSyncedTotal(summary);
+      app.toast("success", `${c.synchronized} synced${notSynced ? `, ${notSynced} not synced` : ""}.`);
     }
     useProd.setState({ syncView: "results" });
     app.fit();
@@ -822,8 +820,8 @@ function handleEvent(event: EngineEvent): void {
         });
         app.invalidatePeaks();
         const { synced, clips } = result.timeline.stats;
-        const review = result.timeline.review.length;
-        app.toast("success", `Synchronised ${synced} of ${clips} clips${review ? `; ${review} to review` : ""}.`);
+        const review = clips - synced;
+        app.toast("success", `${synced} of ${clips} clips synced${review ? `, ${review} not synced` : ""}.`);
         void app.refresh().then(() => useApp.getState().fit());
       } else if (event.params.kind === "ai-sync") {
         void useAnalyze.getState().onAiJobDone(event.params.job_id, false);
