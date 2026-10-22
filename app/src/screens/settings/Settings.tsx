@@ -854,7 +854,7 @@ function UpdatesPane() {
         <dt>This version</dt>
         <dd>{hello?.version ?? "…"}</dd>
         <dt>Releases</dt>
-        <dd className="sy-mono">github.com/ZABRONMGAYA/ZABRONMGAYA/releases</dd>
+        <dd className="sy-mono">github.com/ZABRONMGAYA/Syncora/releases</dd>
       </div>
       <SettingRow
         title="Installing an update"
