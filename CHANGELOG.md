@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.1 (not released yet)
+## 1.4.1
 
 Results in two words: synced, or not synced.
 
