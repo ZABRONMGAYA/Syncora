@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.4.2
+
+Better sync on real weddings: a 330-clip production went from 55 to 83 synced clips, with no clip that was synced
+before lost and none placed wrongly.
+
+### Fixed
+
+- **Recorders whose files carry only a date.** A Broadcast WAV date tag without a time ("2026-10-15") was read as
+  midnight, so every file of a sound recorder seemed to start at the same second; most recorder files, the reference
+  included, were then not synced, and the clips around them lost their best search. A date alone is no longer a
+  recording time (projects made with earlier versions drop it when they are opened). A recorder file whose only audio
+  match is uncertain is placed by the precise clock it shares with the other files (BWF time, jam-synced timecode).
+- **Moving cameras.** Gimbal clips whose sound reaches the camera from several loudspeakers were rejected because
+  their measurements spread over a few milliseconds. Where a camera's clock already says where a clip is, an
+  unconfirmed match is measured again with shorter windows that may differ by up to half a frame; only a confident
+  result counts.
+- **One exact match outvoted by many wrong ones.** The solver gives a confident match it rejected a second hearing,
+  so two dozen consistent but wrong uncertain matches no longer throw out a clip's exact match with the recorder. A
+  match that misses by an acoustic delay only (about 40 ms) no longer leaves a clip not synced when a more confident
+  match holds it.
+- **Cameras rolling while the recorder is off** can be matched to each other: a clip that only its own calibrated
+  camera clock places is now a reference for the search.
+- **Two takes mistaken for one.** A take started a second after the previous one on an exFAT card was read as a
+  chapter of the same recording; when audio places both files confidently and contradicts that, the link is
+  dropped instead of leaving the second file not synced.
+- **Clock corroboration** no longer counts another clip's lost match against a placement its camera clock confirms.
+- **Per-camera clip counts** in the results include every clip of the camera (they showed 34 of 42).
+- Measured on the hard multicamera benchmark: unchanged at 72 of 85 synced, with no false match.
+
 ## 1.4.1
 
 Results in two words: synced, or not synced.
