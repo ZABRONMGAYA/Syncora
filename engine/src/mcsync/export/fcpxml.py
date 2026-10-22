@@ -6,6 +6,10 @@ cameras on lanes 1, 2, … (with their own audio), recorders on lanes −1, −2
 
 A clip's ``offset`` is on the sequence's frame grid; its ``start`` is the asset start plus the in point, which for
 audio-only clips carries the sub-frame part of the synchronised position (to the sample).
+
+Folders: every file is also a clip of the event, with a keyword naming its folder path ("Wedding / Cam A / CARD1"),
+and each path is a keyword collection inside a collection folder named after the top folder. That is how Final Cut
+Pro shows imported folders.
 """
 
 from __future__ import annotations
@@ -35,12 +39,18 @@ def _el(parent: ET.Element, tag: str, **attrs: str) -> ET.Element:
     return ET.SubElement(parent, tag, attrs)
 
 
+def keyword(bin: tuple[str, ...]) -> str:
+    """A folder path as one Final Cut Pro keyword (commas would separate keywords)."""
+    return " / ".join(name.replace(",", " ") for name in bin)
+
+
 class _Writer:
     def __init__(self, seq: ExportSequence) -> None:
         self.seq = seq
         self.ids = 0
         self.formats: dict[tuple[Fraction, int, int], str] = {}
         self.assets: dict[str, str] = {}
+        self.extents: dict[str, tuple[str, str]] = {}  # media key -> asset start and duration
 
     def _id(self) -> str:
         self.ids += 1
@@ -84,6 +94,34 @@ class _Writer:
         asset = _el(resources, "asset", **attrs)
         _el(asset, "media-rep", kind="original-media", src=file_url(media.path))
         self.assets[media.key] = attrs["id"]
+        self.extents[media.key] = (attrs["start"], attrs["duration"])
+
+    def browser(self, event: ET.Element) -> None:
+        """Each file as an event clip keyed by its folder, and the folders as keyword collections."""
+        collections: dict[str, list[str]] = {}
+        for media in self.seq.media:
+            if not media.bin:
+                continue
+            value = keyword(media.bin)
+            start, duration = self.extents[media.key]
+            attrs = {
+                "ref": self.assets[media.key],
+                "name": media.name,
+                "start": start,
+                "duration": duration,
+                "tcFormat": "DF" if media.drop_frame else "NDF",
+            }
+            if media.audio_channels:
+                attrs["audioRole"] = "dialogue"
+            clip = _el(event, "asset-clip", **attrs)
+            _el(clip, "keyword", start=start, duration=duration, value=value)
+            names = collections.setdefault(media.bin[0], [])
+            if value not in names:
+                names.append(value)
+        for top in sorted(collections, key=str.casefold):
+            folder = _el(event, "collection-folder", name=top)
+            for value in sorted(collections[top], key=str.casefold):
+                _el(folder, "keyword-collection", name=value)
 
     def write(self) -> ET.Element:
         seq = self.seq
@@ -96,6 +134,7 @@ class _Writer:
 
         library = _el(root, "library")
         event = _el(library, "event", name="Syncora")
+        self.browser(event)
         project = _el(event, "project", name=seq.name)
         tc_start = Fraction(seq.start_frame) / rate
         duration = Fraction(seq.duration_frames) / rate
@@ -142,7 +181,18 @@ class _Writer:
             }
             if media.audio_channels:
                 attrs["audioRole"] = "dialogue"
-            _el(gap, "asset-clip", **attrs)
+            item = _el(gap, "asset-clip", **attrs)
+            if clip.review_note:
+                # The reason as a marker at the clip's first frame, and a keyword to find every such clip.
+                one_frame = fcp_time(1 / rate, rate)
+                _el(item, "keyword", start=attrs["start"], duration=attrs["duration"], value="Check sync")
+                _el(item, "marker", start=attrs["start"], duration=one_frame, value=clip.review_note)
+        for m in seq.markers:  # after the clips, as the DTD orders a gap's children
+            attrs = {"start": fcp_time(tc_start + Fraction(m.frame) / rate, rate), "duration": fcp_time(1 / rate, rate)}
+            attrs["value"] = m.name
+            if m.comment:
+                attrs["note"] = m.comment
+            _el(gap, "marker", **attrs)
         return root
 
 

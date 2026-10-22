@@ -3,7 +3,7 @@
 # and FFmpeg (engine/packaging/build_ffmpeg.sh) must be built first, on the platform and architecture of the installer. Icons: node scripts/render-icons.mjs.
 appId: app.syncora.desktop
 productName: Syncora
-copyright: Copyright © 2026 Syncora contributors
+copyright: Copyright © 2026 OrbitOne Studios
 directories:
   output: release
   buildResources: build

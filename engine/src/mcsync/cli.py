@@ -4,6 +4,7 @@
     mcsync probe FILE...               metadata as JSON (for bug reports about unusual files)
     mcsync sync PATH... [options]      import folders/files, synchronise, print the placements
     mcsync export PROJECT OUTPUT       write the synchronised timeline as XML (Premiere Pro, Resolve)
+    mcsync cut PROJECT OUTPUT          an AI first cut (wedding long version, podcast) as XML
     mcsync transcribe FILE [options]   what is said in a recording, with speakers (runs offline)
 
 ``sync`` uses the same service code as the desktop app, so a project it writes
@@ -143,6 +144,7 @@ def _export(service, output: str, args: argparse.Namespace) -> dict:  # noqa: AN
         sequence_rate=args.rate,
         start_timecode=args.start_tc,
         include_uncertain=not args.exclude_uncertain,
+        bins=not args.no_bins,
     )
 
 
@@ -156,6 +158,38 @@ def cmd_export(args: argparse.Namespace) -> int:
         return 0
     except ValueError as exc:
         print(f"export failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        service.close()
+
+
+def cmd_cut(args: argparse.Namespace) -> int:
+    from mcsync.service.app import EngineService
+
+    service = EngineService(notify=None, cache_dir=args.cache_dir, workers=args.workers)
+    try:
+        service.project_open(args.project)
+        fmt = args.format or ("fcpxml" if args.output.lower().endswith(".fcpxml") else "xmeml")
+        options = {"tighten_pauses": not args.keep_pauses, "use_review_clips": args.use_review_clips}
+        started = service.edit_first_cut(style=args.style, options=options, format=fmt, path=args.output,
+                                         sequence_rate=args.rate, start_timecode=args.start_tc,
+                                         bins=not args.no_bins)  # fmt: skip
+        job = service.jobs.wait(started["job_id"])
+        if job.status != "done":
+            print(f"first cut failed: {job.error}", file=sys.stderr)
+            return 1
+        plan = job.result
+        cameras = ", ".join(f"{c['name']} {c['seconds']:.0f} s" for c in plan["cameras"] if c["seconds"])
+        print(f"{plan['style']} first cut: {_fmt_time(plan['duration_s'])} of {_fmt_time(plan['source_duration_s'])}"
+              f" in {len(plan['shots'])} shots ({cameras})")  # fmt: skip
+        for chapter in plan["chapters"]:
+            print(f"  {_fmt_time(chapter['t_s'])}  {chapter['label']}")
+        for warning in plan["warnings"]:
+            print(f"note: {warning}")
+        _print_export(plan["export"])
+        return 0
+    except ValueError as exc:
+        print(f"first cut failed: {exc}", file=sys.stderr)
         return 1
     finally:
         service.close()
@@ -185,6 +219,7 @@ def _add_export_options(p: argparse.ArgumentParser) -> None:
     p.add_argument("--rate", help="sequence frame rate, e.g. 25 or 24000/1001 (default: the most common)")
     p.add_argument("--start-tc", default="01:00:00:00", help="sequence start timecode (default 01:00:00:00)")
     p.add_argument("--exclude-uncertain", action="store_true", help="leave out clips that need review")
+    p.add_argument("--no-bins", action="store_true", help="list files flat, not in bins that mirror their folders")
 
 
 def _print_timeline(result: dict) -> None:
@@ -237,6 +272,18 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("output", help="an .xml (FCP 7 XML) or .fcpxml file")
     _add_export_options(e)
     e.set_defaults(func=cmd_export)
+
+    c = sub.add_parser("cut", help="an AI first cut of a synchronised project, as XML")
+    c.add_argument("project")
+    c.add_argument("output", help="an .xml (FCP 7 XML) or .fcpxml file")
+    c.add_argument("--style", choices=["wedding", "podcast"], default="wedding")
+    c.add_argument("--keep-pauses", action="store_true", help="keep long silences")
+    c.add_argument("--use-review-clips", action="store_true", help="also cut to clips that need review")
+    c.add_argument("--format", choices=["xmeml", "fcpxml"], help="default: from the extension (.fcpxml or .xml)")
+    c.add_argument("--rate", help="sequence frame rate, e.g. 25 or 24000/1001 (default: the most used)")
+    c.add_argument("--start-tc", default="01:00:00:00", help="sequence start timecode (default 01:00:00:00)")
+    c.add_argument("--no-bins", action="store_true", help="list files flat, not in bins that mirror their folders")
+    c.set_defaults(func=cmd_cut)
 
     t = sub.add_parser("transcribe", help="transcribe a recording on this computer (speech, speakers, sound events)")
     t.add_argument("file")

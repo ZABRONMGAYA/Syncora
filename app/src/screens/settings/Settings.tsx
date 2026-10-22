@@ -9,9 +9,11 @@ import {
   loadSettings as loadExportDefaults,
   saveSettings as saveExportDefaults,
 } from "../../features/export/ExportDialog";
+import { RELEASES_PAGE } from "../../lib/updates";
 import { useAnalyze } from "../../state/analyze";
 import { type SettingsCategory, useProd } from "../../state/production";
 import { useApp } from "../../state/store";
+import { autoCheckEnabled, setAutoCheck, useUpdates } from "../../state/updates";
 import { formatBytes } from "../media/labels";
 
 // DESIGN-OPEN: #10 only the Synchronization pane is drawn; the other panes follow its layout (DESIGN_DECISIONS.md D-10).
@@ -416,6 +418,8 @@ function AboutPane() {
     <>
       <PaneHead title="About" sub="Syncora: automatic synchronisation of multicamera video and external audio." />
       <div className="sy-kv sy-settings__facts">
+        <dt>Developer</dt>
+        <dd>OrbitOne Studios</dd>
         <dt>Version</dt>
         <dd>{hello?.version ?? "…"}</dd>
         <dt>Engine</dt>
@@ -776,6 +780,16 @@ function ExportPane() {
           onChange={(on) => change({ includeUncertain: on })}
         />
       </SettingRow>
+      <SettingRow
+        title="Keep my folders as bins"
+        description="Files are listed in bins that mirror the folders you imported (keyword collections in Final Cut Pro); off lists them flat."
+      >
+        <Toggle
+          label="Keep my folders as bins"
+          on={defaults.folderBins}
+          onChange={(on) => change({ folderBins: on })}
+        />
+      </SettingRow>
     </>
   );
 }
@@ -831,9 +845,9 @@ function PrivacyPane() {
       </SettingRow>
       <SettingRow
         title="Network"
-        description="Syncora connects to the internet only when you download an additional speech model (from the sherpa-onnx releases on GitHub)."
+        description="Syncora connects to the internet only to ask GitHub for the latest version when it opens (you can turn this off in Updates), and when you download an additional speech model (from the sherpa-onnx releases on GitHub)."
       >
-        <span className="sy-dim">Model downloads only</span>
+        <span className="sy-dim">Update check and model downloads</span>
       </SettingRow>
       <SettingRow title="Usage data" description="Syncora collects no analytics, telemetry or crash reports.">
         <span className="sy-dim">None</span>
@@ -844,6 +858,18 @@ function PrivacyPane() {
 
 function UpdatesPane() {
   const hello = useApp((s) => s.engine.hello);
+  const { checking, info, error, checkedAt } = useUpdates();
+  const [auto, setAuto] = useState(autoCheckEnabled);
+  const checked = checkedAt ? new Date(checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+  const result = checking
+    ? "Checking…"
+    : error
+      ? `Could not check: ${error}.`
+      : info?.available
+        ? `Syncora ${info.latest} is available.`
+        : info
+          ? `You have the latest version${checked ? ` (checked at ${checked})` : ""}.`
+          : "Not checked yet in this session.";
   return (
     <>
       <PaneHead
@@ -853,9 +879,34 @@ function UpdatesPane() {
       <div className="sy-kv sy-settings__facts">
         <dt>This version</dt>
         <dd>{hello?.version ?? "…"}</dd>
+        <dt>Latest version</dt>
+        <dd data-testid="update-latest">{info?.latest ?? "…"}</dd>
         <dt>Releases</dt>
-        <dd className="sy-mono">github.com/ZABRONMGAYA/Syncora/releases</dd>
+        <dd className="sy-mono">{RELEASES_PAGE.replace("https://", "")}</dd>
       </div>
+      <SettingRow
+        title="Check for updates when Syncora opens"
+        description="Asks GitHub for the latest release, and shows a notice when a newer version is out. Nothing is downloaded or installed without you."
+      >
+        <Toggle
+          label="Check for updates when Syncora opens"
+          on={auto}
+          onChange={(on) => {
+            setAutoCheck(on);
+            setAuto(on);
+          }}
+        />
+      </SettingRow>
+      <SettingRow title="Check now" description={result}>
+        {info?.available && (
+          <Button variant="primary" onClick={() => useUpdates.getState().download()}>
+            Download {info.latest}
+          </Button>
+        )}
+        <Button loading={checking} loadingLabel="Checking…" onClick={() => void useUpdates.getState().check()}>
+          Check now
+        </Button>
+      </SettingRow>
       <SettingRow
         title="Installing an update"
         description="Run the new installer over this one: projects, settings, downloaded models and the analysis cache are kept."

@@ -11,6 +11,8 @@ audio, hundreds or thousands of interrupted camera clips, mixed frame rates, dri
 **Stack:** Python (NumPy, SciPy) engine · FFmpeg · SQLite · sherpa-onnx (Whisper, Silero, 3D-Speaker) · Electron +
 React desktop app.
 
+Developed by **OrbitOne Studios**.
+
 ![Sync results for a generated production](docs/images/results.png)
 
 ## Large productions
@@ -56,6 +58,34 @@ is uploaded.
 
 The larger speech models (Whisper small and turbo) download on demand from Settings → AI. From the command line:
 `mcsync transcribe recording.wav`.
+
+## AI first cut
+
+Version 1.4 edits a first version of a synchronised production (the clapperboard in the top bar, or File → Create
+AI First Cut…, ⇧⌘E / Ctrl+Shift+E), on your computer, from the cameras' positions, the transcripts and the sound:
+
+* **Wedding: long version.** Every moment the cameras saw, in order, without the waiting in between. The main
+  camera holds vows and speeches; other angles come in for variety, cutting on pauses in speech.
+* **Podcast or interview.** From the first words to the last with long pauses tightened; each speaker on their
+  camera (guessed from which camera microphone hears them, or chosen in the dialog), the wide shot for cross-talk
+  and long answers.
+
+The cut is exported as FCP 7 XML or FCPXML like the synchronised timeline: picture on V1, the program sound below
+(sound recorders first), chapter markers for long speeches. Sound stays placed to the sample and picture within
+half a frame of where synchronisation put it. Clips that need review are left out unless you allow them.
+
+## Exports keep your folders
+
+Exported timelines list every file in bins that mirror the folders you imported (`Wedding / Cam A / CARD1`):
+nested bins with one master clip per file in Premiere Pro and DaVinci Resolve (FCP 7 XML), keyword collections in
+folders in Final Cut Pro (FCPXML). Clips placed for review are labelled orange with a "Check sync" marker saying
+why, so they cannot pass for synchronised in the editor. Settings → Export → Keep my folders as bins turns bins off.
+
+## Updates
+
+When Syncora opens it asks GitHub for the latest release and, when a newer version is out, shows what's new and a
+Download button that opens the release page. Nothing is downloaded or installed without you; Settings → Updates
+turns the check off.
 
 ## Installing
 
@@ -108,6 +138,9 @@ mcsync transcribe ZOOM0001.WAV --language en
 # Write the timeline for Premiere Pro / Resolve (.xml) or Resolve / Final Cut Pro (.fcpxml)
 mcsync export wedding.syncora wedding.xml
 mcsync export wedding.syncora wedding.fcpxml --rate 25 --start-tc 01:00:00:00
+
+# An AI first cut of the synchronised project (wedding long version or podcast), as XML
+mcsync cut wedding.syncora "wedding first cut.xml" --style wedding
 
 # Benchmarks behind SCALABILITY_TEST_REPORT.md
 python -m mcsync.testing.dbbench --media 5000 10000

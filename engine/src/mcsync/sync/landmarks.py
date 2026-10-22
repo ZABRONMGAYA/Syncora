@@ -394,3 +394,39 @@ def query_many(directory: str, keys: list[str], options: dict | None = None) -> 
     """Worker-process entry point: query several clips against one index."""
     index = open_index(directory)
     return [(k, index.query(k, **(options or {}))) for k in keys]
+
+
+_CANDIDATES_FILE = "candidates.json"
+
+
+def save_candidates(directory: str | Path, found: dict[str, list[Candidate]]) -> None:
+    """Keep every clip's candidates (default query options) next to the index they came from: an index is named
+    after its clips' landmarks, so a later sync of the same clips reads them back instead of querying again (a
+    4,000-file production spent most of a minute and a half re-querying an unchanged index)."""
+    path = Path(directory) / _CANDIDATES_FILE
+    rows = {
+        k: [[c.other, c.offset_s, c.votes, c.background, c.total_votes] for c in cands] for k, cands in found.items()
+    }
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(json.dumps({"version": LANDMARK_VERSION, "candidates": rows}))
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)  # a cache only: the next sync queries again
+
+
+def load_candidates(directory: str | Path) -> dict[str, list[Candidate]] | None:
+    """The candidates :func:`save_candidates` kept for this index, or None."""
+    try:
+        data = json.loads((Path(directory) / _CANDIDATES_FILE).read_text())
+    except (OSError, ValueError):
+        return None
+    if data.get("version") != LANDMARK_VERSION:
+        return None
+    try:
+        return {
+            k: [Candidate(str(o), float(off), int(v), float(bg), int(tot)) for o, off, v, bg, tot in cands]
+            for k, cands in data["candidates"].items()
+        }
+    except (KeyError, TypeError, ValueError):
+        return None

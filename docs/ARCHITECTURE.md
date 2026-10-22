@@ -187,13 +187,14 @@ integer ids.
 | `timeline.get` | → groups, tracks, clips, unsynced, review queue, stats | |
 | `waveform.info` | `{clip_id}` → cache directory, peak files, rate, audio offset | The renderer then reads the peak files itself. |
 | `job.cancel` / `job.list` | `{job_id}` | Cooperative cancellation between files, chunks and pairs. |
-| `export.xml` | `{format: "xmeml"\|"fcpxml", path, sequence_rate?, start_timecode?, group?, include_uncertain?, name?}` → report | Writes atomically. The report gives per-clip placement errors as the format's readers see them, clips left out and why, and warnings. Every export is recorded in the project file. |
+| `export.xml` | `{format: "xmeml"\|"fcpxml", path, sequence_rate?, start_timecode?, group?, include_uncertain?, name?, bins?}` → report | Writes atomically. The report gives per-clip placement errors as the format's readers see them, clips left out and why, and warnings. Every export is recorded in the project file. Files are listed in bins that mirror the imported folders unless `bins` is false (1.4). |
 | `ai.status` / `ai.download_model` / `ai.remove_model` | → engine, models, languages · `{model_id}` → `{job_id}` | Models shipped with the app or downloaded to the cache folder (1.2). |
 | `transcripts.start` / `.cancel` / `.overview`, `transcript.get` | `{scope: smart\|all\|clips, clip_ids?, redo?}` · `{clip_id}` → segments, state, markers | Transcription runs as `transcribe` tasks (10-minute parts) in the pipeline. A clip without its own transcript gets what its sync group's transcribed recordings heard (1.2). |
 | `speakers.list` / `.rename` / `.merge` | `{key, name}` · `{keys, into}` | Voices across the project (1.2). |
 | `markers.list` / `.add` / `.update` / `.delete` | `{clip_id, t_s, label?}` | Sound events heard while transcribing and markers added by hand (1.2). |
 | `search.query` | `{text, limit?}` → hits with `score` and `matched_by` | Phrase, all words or some words (FTS5), speaker names, markers, clip names (1.2). |
 | `ai.sync` / `.sync_result` / `.sync_accept` / `.sync_reject` / `ai.fallback` | `{clip_id, candidate?}` | AI sync: candidates from speech, visual, close-range audio and clock evidence; accepting adds an undoable offset correction (1.2). |
+| `edit.first_cut` | `{style: "wedding"\|"podcast", group?, options?, format?, path?, name?, bins?, start_timecode?, sequence_rate?}` → `{job_id}` | AI first cut (1.4, `mcsync/edit`): the job's result is the plan (shots, cameras, speakers, chapters, warnings) and, with `path`, the export report of the cut written as XML. |
 | **Notifications** | `job.progress {job_id, kind, progress, message}` · `job.done {job_id, kind, result}` · `job.failed {job_id, kind, cancelled, error}` · `media.imported` · `media.analyzed` · `media.thumbnails` · `pipeline.progress` (status) · `pipeline.matches` · `pipeline.sync_finished` · `pipeline.error` · `transcript.updated {clip_ids}` · `ai.fallback_done {clips, placed}` | Progress throttled to 10 Hz (pipeline: 4 Hz). |
 
 Errors are JSON-RPC errors: −32700/−32600/−32601/−32602/−32603, plus −32000 no project open, −32001 busy (a

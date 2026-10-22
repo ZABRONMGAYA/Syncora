@@ -14,8 +14,10 @@ import {
   type MenuCommand,
   type Method,
 } from "../src/api/contract";
+import { isReleaseUrl } from "../src/lib/updates";
 import { EngineProcess, RpcError, engineCommand } from "./engine";
 import { PreviewServer, ffmpegPath } from "./preview";
+import { checkForUpdate } from "./updates";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const allowed = new Set<string>(ENGINE_METHODS);
@@ -64,7 +66,14 @@ function send(event: EngineEvent): void {
   window?.webContents.send("engine:event", event);
 }
 
-engine.on("event", (event: EngineEvent) => send(event));
+engine.on("event", (event: EngineEvent) => {
+  // A first cut the engine wrote may be revealed in the file manager, like an export.
+  if (event.method === "job.done" && event.params.kind === "first-cut") {
+    const written = (event.params.result as { export?: { path?: string } } | null)?.export?.path;
+    if (written) exported.add(path.resolve(written));
+  }
+  send(event);
+});
 engine.on("status", (status) => send({ method: "engine.status", params: status }));
 
 /** The Syncora icon for the title bar and taskbar (macOS uses the app bundle's icon). */
@@ -217,6 +226,7 @@ function buildMenu(): void {
         { label: "Import Folder…", accelerator: "CmdOrCtrl+Shift+I", click: menuCommand("import-folder") },
         { type: "separator" },
         { label: "Export XML…", accelerator: "CmdOrCtrl+E", click: menuCommand("export") },
+        { label: "Create AI First Cut…", accelerator: "CmdOrCtrl+Shift+E", click: menuCommand("first-cut") },
         { type: "separator" },
         { label: "Settings…", accelerator: "CmdOrCtrl+,", click: menuCommand("settings") },
         { type: "separator" },
@@ -431,6 +441,10 @@ function registerIpc(): void {
       filters: [filter],
     });
     return result.canceled || !result.filePath ? null : result.filePath;
+  });
+  ipcMain.handle("updates:check", () => checkForUpdate(app.getVersion(), process.platform, process.arch));
+  ipcMain.handle("updates:open", (_e, url: string) => {
+    if (typeof url === "string" && isReleaseUrl(url)) void shell.openExternal(url);
   });
   ipcMain.handle("shell:show", (_e, file: string) => {
     const full = path.resolve(file);

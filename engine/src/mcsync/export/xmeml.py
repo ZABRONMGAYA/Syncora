@@ -9,11 +9,14 @@ Conventions, as Premiere Pro writes them for mixed-rate sequences:
   audio-only clips to the sample. Readers that ignore them round the in point to a frame.
 * A file is described in full at its first reference and by ``<file id="…"/>`` after that.
 * Camera audio sits on its own tracks, one per channel, linked to the video.
+* Bins come before the sequence: one master clip per file, in nested ``<bin>`` elements that mirror its folders, as
+  Premiere Pro exports a project. The sequence's clip items refer to those master clips by ``<masterclipid>``.
 """
 
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 from fractions import Fraction
 
 from mcsync.timecode import Timecode, nominal_fps
@@ -22,6 +25,8 @@ from .sequence import ExportClip, ExportSequence, SourceMedia, media_frames
 from .urls import file_url
 
 TICKS_PER_SECOND = 254_016_000_000
+#: Premiere Pro's label for clips whose position should be checked (``ExportClip.review_note``).
+REVIEW_LABEL = "Mango"
 
 
 def _el(parent: ET.Element, tag: str, text: object = None, **attrs: str) -> ET.Element:
@@ -67,6 +72,24 @@ def _audio_characteristics(parent: ET.Element, depth: int, sample_rate: int) -> 
 
 def _ticks(seconds: Fraction) -> int:
     return round(seconds * TICKS_PER_SECOND)
+
+
+@dataclass
+class _Bin:
+    bins: dict[str, _Bin] = field(default_factory=dict)
+    media: list[SourceMedia] = field(default_factory=list)
+
+
+def _bin_tree(media: tuple[SourceMedia, ...]) -> _Bin:
+    root = _Bin()
+    for m in media:
+        if not m.bin:
+            continue
+        node = root
+        for name in m.bin:
+            node = node.bins.setdefault(name, _Bin())
+        node.media.append(m)
+    return root
 
 
 class _Writer:
@@ -133,6 +156,16 @@ class _Writer:
         if kind == "video":
             _el(item, "alphatype", "none")
         self.file(item, clip.media)
+        if clip.review_note:
+            # Orange in the timeline, with the reason on the clip's first item (its picture, or its first channel).
+            first = (kind == "video") or (clip.video_track is None and clip.audio_tracks[:1] == (track,))
+            if first:
+                marker = _el(item, "marker")
+                _el(marker, "name", "Check sync")
+                _el(marker, "comment", clip.review_note)
+                _el(marker, "in", in_frames)
+                _el(marker, "out", -1)
+            _el(_el(item, "labels"), "label2", REVIEW_LABEL)
         source = _el(item, "sourcetrack")
         _el(source, "mediatype", kind)
         _el(source, "trackindex", 1 if kind == "video" else clip.audio_tracks.index(track) + 1)
@@ -148,9 +181,57 @@ class _Writer:
                 if other_kind == "audio":
                     _el(link, "groupindex", 1)
 
+    def bin(self, parent: ET.Element, name: str, node: _Bin) -> None:
+        b = _el(parent, "bin")
+        _el(b, "name", name)
+        children = _el(b, "children")
+        for sub in sorted(node.bins, key=str.casefold):
+            self.bin(children, sub, node.bins[sub])
+        for media in node.media:
+            self.masterclip(children, media)
+
+    def masterclip(self, parent: ET.Element, media: SourceMedia) -> None:
+        """A file as Premiere Pro lists it in a bin: its picture and every audio channel, linked."""
+        mid = self.masterclips[media.key]
+        rate = media.video_rate or self.seq.rate
+        clip = _el(parent, "clip", id=mid)
+        _el(clip, "masterclipid", mid)
+        _el(clip, "ismasterclip", "TRUE")
+        _el(clip, "name", media.name)
+        _el(clip, "duration", media_frames(media, rate))
+        _rate(clip, rate)
+        parts = [("video", 1, f"{mid}-video")] if media.has_video else []
+        parts += [("audio", ch, f"{mid}-audio-{ch}") for ch in range(1, media.audio_channels + 1)]
+        m = _el(clip, "media")
+        sections: dict[str, ET.Element] = {}
+        for kind, index, item_id in parts:
+            if kind not in sections:
+                sections[kind] = _el(m, kind)
+            item = _el(_el(sections[kind], "track"), "clipitem", id=item_id)
+            _el(item, "masterclipid", mid)
+            _el(item, "name", media.name)
+            _rate(item, rate)
+            if kind == "video":
+                _el(item, "alphatype", "none")
+            self.file(item, media)
+            if kind == "audio":
+                source = _el(item, "sourcetrack")
+                _el(source, "mediatype", "audio")
+                _el(source, "trackindex", index)
+            if len(parts) > 1:
+                for other_kind, other_index, other_id in parts:
+                    link = _el(item, "link")
+                    _el(link, "linkclipref", other_id)
+                    _el(link, "mediatype", other_kind)
+                    _el(link, "trackindex", other_index)
+                    _el(link, "clipindex", 1)
+
     def write(self) -> ET.Element:
         seq = self.seq
         root = ET.Element("xmeml", version="5")
+        tree = _bin_tree(seq.media)
+        for name in sorted(tree.bins, key=str.casefold):
+            self.bin(root, name, tree.bins[name])
         s = _el(root, "sequence", id="sequence-1")
         _el(s, "name", seq.name)
         _el(s, "duration", seq.duration_frames)
@@ -177,6 +258,12 @@ class _Writer:
             _el(track, "enabled", "TRUE")
             _el(track, "locked", "FALSE")
             _el(track, "outputchannelindex", 2 if t.channel and t.channel % 2 == 0 else 1)
+        for m in seq.markers:
+            marker = _el(s, "marker")
+            _el(marker, "name", m.name)
+            _el(marker, "comment", m.comment)
+            _el(marker, "in", m.frame)
+            _el(marker, "out", -1)
         return root
 
 

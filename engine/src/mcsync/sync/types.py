@@ -65,6 +65,9 @@ class Flag(StrEnum):
     #: Placed by AI sync (speech and visual evidence) where audio could not place the clip: always reviewed.
     AI_PROPOSAL = "ai_proposal"
     NO_AUDIO = "no_audio"
+    #: An audio placement its camera's calibrated clock agrees with (sync/corroborate.py): two independent pieces of
+    #: evidence, so its confidence is raised.
+    CLOCK_CORROBORATED = "clock_corroborated"
 
 
 class ClockSource(StrEnum):

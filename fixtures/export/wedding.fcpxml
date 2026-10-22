@@ -30,6 +30,42 @@
   </resources>
   <library>
     <event name="Syncora">
+      <asset-clip ref="r2" name="A001.MOV" start="865584720/24000s" duration="2879877/24000s" tcFormat="NDF" audioRole="dialogue">
+        <keyword start="865584720/24000s" duration="2879877/24000s" value="Card A" />
+      </asset-clip>
+      <asset-clip ref="r3" name="A002.MOV" start="868719852/24000s" duration="4799795/24000s" tcFormat="NDF" audioRole="dialogue">
+        <keyword start="868719852/24000s" duration="4799795/24000s" value="Card A" />
+      </asset-clip>
+      <asset-clip ref="r5" name="C0001 #2.MP4" start="1081800720/30000s" duration="4499495/30000s" tcFormat="DF" audioRole="dialogue">
+        <keyword start="1081800720/30000s" duration="4499495/30000s" value="Cam B" />
+      </asset-clip>
+      <asset-clip ref="r7" name="GH010042.MP4" start="0s" duration="70s" tcFormat="NDF" audioRole="dialogue">
+        <keyword start="0s" duration="70s" value="GoPro" />
+      </asset-clip>
+      <asset-clip ref="r8" name="GH020042.MP4" start="0s" duration="60s" tcFormat="NDF" audioRole="dialogue">
+        <keyword start="0s" duration="60s" value="GoPro" />
+      </asset-clip>
+      <asset-clip ref="r10" name="DJI_0001.MP4" start="36300s" duration="40s" tcFormat="NDF">
+        <keyword start="36300s" duration="40s" value="Drone" />
+      </asset-clip>
+      <asset-clip ref="r11" name="230614_001.WAV" start="36000s" duration="600s" tcFormat="NDF" audioRole="dialogue">
+        <keyword start="36000s" duration="600s" value="ZOOM F8" />
+      </asset-clip>
+      <collection-folder name="Cam B">
+        <keyword-collection name="Cam B" />
+      </collection-folder>
+      <collection-folder name="Card A">
+        <keyword-collection name="Card A" />
+      </collection-folder>
+      <collection-folder name="Drone">
+        <keyword-collection name="Drone" />
+      </collection-folder>
+      <collection-folder name="GoPro">
+        <keyword-collection name="GoPro" />
+      </collection-folder>
+      <collection-folder name="ZOOM F8">
+        <keyword-collection name="ZOOM F8" />
+      </collection-folder>
       <project name="Smith wedding">
         <sequence format="r1" duration="14639625/24000s" tcStart="86486400/24000s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
           <spine>
@@ -38,7 +74,10 @@
               <asset-clip ref="r11" lane="-1" offset="86727641/24000s" name="230614_001.WAV" start="1728001824/48000s" duration="14398384/24000s" tcFormat="NDF" audioRole="dialogue" />
               <asset-clip ref="r2" lane="1" offset="87447360/24000s" name="A001.MOV" start="865584720/24000s" duration="2879877/24000s" tcFormat="NDF" audioRole="dialogue" />
               <asset-clip ref="r8" lane="3" offset="88166078/24000s" name="GH020042.MP4" start="0s" duration="1439438/24000s" tcFormat="NDF" audioRole="dialogue" />
-              <asset-clip ref="r5" lane="2" offset="88171083/24000s" name="C0001 #2.MP4" start="1081800720/30000s" duration="3599596/24000s" tcFormat="DF" audioRole="dialogue" />
+              <asset-clip ref="r5" lane="2" offset="88171083/24000s" name="C0001 #2.MP4" start="1081800720/30000s" duration="3599596/24000s" tcFormat="DF" audioRole="dialogue">
+                <keyword start="1081800720/30000s" duration="3599596/24000s" value="Check sync" />
+                <marker start="1081800720/30000s" duration="1001/24000s" value="Check sync: placed by an uncertain audio match." />
+              </asset-clip>
               <asset-clip ref="r3" lane="1" offset="90578488/24000s" name="A002.MOV" start="868719852/24000s" duration="4799795/24000s" tcFormat="NDF" audioRole="dialogue" />
               <asset-clip ref="r10" lane="4" offset="93926833/24000s" name="DJI_0001.MP4" start="36300s" duration="959959/24000s" tcFormat="NDF" />
             </gap>

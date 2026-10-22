@@ -14,7 +14,16 @@ from mcsync.project.db import ClipRow
 from mcsync.timeline import Timeline
 
 from .fcpxml import write_fcpxml
-from .sequence import ExportClip, ExportError, ExportOptions, ExportSequence, SourceMedia, Track, build_sequence
+from .sequence import (
+    ExportClip,
+    ExportError,
+    ExportOptions,
+    ExportSequence,
+    SequenceMarker,
+    SourceMedia,
+    Track,
+    build_sequence,
+)
 from .urls import file_url
 from .xmeml import write_xmeml
 
@@ -28,9 +37,11 @@ __all__ = [
     "ExportError",
     "ExportOptions",
     "ExportSequence",
+    "SequenceMarker",
     "SourceMedia",
     "Track",
     "build_sequence",
+    "export_sequence",
     "export_timeline",
     "file_url",
     "format_report",
@@ -75,6 +86,12 @@ def export_timeline(
     """Write ``timeline`` as ``fmt`` ("xmeml" or "fcpxml") to ``path``; return the report."""
     if fmt not in FORMATS:
         raise ExportError(f"unknown export format {fmt!r}; choose one of {', '.join(FORMATS)}")
-    seq = build_sequence(timeline, rows, options)
+    return export_sequence(build_sequence(timeline, rows, options), fmt, path)
+
+
+def export_sequence(seq: ExportSequence, fmt: str, path: str | Path) -> dict:
+    """Write a sequence already built (a timeline, a first cut) as ``fmt``; return the report."""
+    if fmt not in FORMATS:
+        raise ExportError(f"unknown export format {fmt!r}; choose one of {', '.join(FORMATS)}")
     _write_atomic(Path(path), FORMATS[fmt](seq))
     return {"path": str(path), "format": fmt} | format_report(seq, fmt)

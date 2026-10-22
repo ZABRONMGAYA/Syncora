@@ -25,6 +25,7 @@ from mcsync.export import (
     write_fcpxml,
     write_xmeml,
 )
+from mcsync.export.bins import media_bins
 from mcsync.export.sequence import ExportClip, _resolve_rounding_overlaps
 from mcsync.export.xmeml import TICKS_PER_SECOND
 from mcsync.media.probe import AudioStreamInfo, MediaInfo, TimecodeInfo, VideoStreamInfo
@@ -342,8 +343,8 @@ def test_xmeml_places_every_clip_item(wedding):
                 track = (video_tracks if kind == "video" else audio_tracks)[int(link.findtext("trackindex")) - 1]
                 assert track.findall("clipitem")[int(link.findtext("clipindex")) - 1] is target
 
-    # Each file is described once, then referenced by id.
-    files = list(sequence.iter("file"))
+    # Each file is described once (in its bin's master clip), then referenced by id.
+    files = list(root.iter("file"))
     full = [f for f in files if len(f)]
     assert sorted(f.get("id") for f in full) == sorted(m.key for m in seq.media)
     assert {f.get("id") for f in files} == {m.key for m in seq.media}
@@ -459,3 +460,139 @@ def test_export_writes_atomically_and_reports(wedding, tmp_path):
         assert out.stat().st_mode & 0o777 == 0o666 & ~umask
     with pytest.raises(ExportError, match="unknown export format"):
         export_timeline(*wedding, "edl", tmp_path / "x.edl")
+
+
+# ---------------------------------------------------------------------------
+# bins: the editor's project mirrors the imported folders
+# ---------------------------------------------------------------------------
+
+
+def test_bins_start_at_the_imported_folder():
+    paths = [
+        r"D:\Wedding\Cam A\CARD1\C0001.MP4",
+        r"d:\wedding\Audio\ZOOM0001.WAV",  # Windows paths compare without regard to case
+        r"D:\Wedding\poster.mov",
+        "/Volumes/SSD/Ceremony/Drone/DJI_0001.MP4",
+        "/Volumes/SSD/Ceremony/Drone/Extra/DJI_0002.MP4",
+        r"E:\Loose\B002.MOV",  # imported on its own
+        "\\\\nas\\shoots\\Smith\\Cam B\\C0003.MP4",
+        r"F:\GH010042.MP4",  # a card imported at its root
+    ]
+    roots = [
+        r"D:\Wedding",
+        "/Volumes/SSD/Ceremony",
+        "/Volumes/SSD/Ceremony/Drone",  # nested roots: the innermost wins
+        r"E:\Loose\B002.MOV",
+        "\\\\nas\\shoots\\Smith",
+        "F:\\",
+    ]
+    assert media_bins(paths, roots) == {
+        paths[0]: ("Wedding", "Cam A", "CARD1"),
+        paths[1]: ("Wedding", "Audio"),
+        paths[2]: ("Wedding",),
+        paths[3]: ("Drone",),
+        paths[4]: ("Drone", "Extra"),
+        paths[5]: ("Loose",),
+        paths[6]: ("Smith", "Cam B"),
+        paths[7]: ("F:",),
+    }
+
+
+def test_bins_without_import_roots_are_the_files_folders(wedding):
+    seq = build_sequence(*wedding)
+    assert {m.name: m.bin for m in seq.media} == {
+        "230614_001.WAV": ("ZOOM F8",),
+        "A001.MOV": ("Card A",),
+        "A002.MOV": ("Card A",),
+        "C0001 #2.MP4": ("Cam B",),
+        "GH010042.MP4": ("GoPro",),
+        "GH020042.MP4": ("GoPro",),
+        "DJI_0001.MP4": ("Drone",),
+    }
+    assert all(not m.bin for m in build_sequence(*wedding, ExportOptions(bins=False)).media)
+
+
+def _shoot_options() -> ExportOptions:
+    return ExportOptions(roots=("/Volumes", r"C:\Footage"))
+
+
+def test_xmeml_bins_hold_one_master_clip_per_file(wedding):
+    seq = build_sequence(*wedding, _shoot_options())
+    root = ET.fromstring(write_xmeml(seq))
+    # Bins come first, the sequence last, as Premiere Pro exports a project.
+    assert [child.tag for child in root] == ["bin", "bin", "sequence"]
+    tree = {
+        b.findtext("name"): sorted(c.findtext("name") for c in b.findall("children/clip")) for b in root.iter("bin")
+    }
+    assert list(tree) == ["Footage", "Cam B", "Volumes", "Card A", "Drone", "GoPro", "ZOOM F8"]
+    assert tree["Volumes"] == [] and tree["Card A"] == ["A001.MOV", "A002.MOV"]
+    assert tree["Cam B"] == ["C0001 #2.MP4"] and tree["Drone"] == ["DJI_0001.MP4"]
+    masters = {c.get("id"): c for c in root.iter("clip")}
+    assert len(masters) == len(seq.media)
+    for master_id, master in masters.items():
+        assert master.findtext("masterclipid") == master_id and master.findtext("ismasterclip") == "TRUE"
+        items = list(master.iter("clipitem"))
+        media = next(m for m in seq.media if m.name == master.findtext("name"))
+        assert len(items) == (1 if media.has_video else 0) + media.audio_channels
+        assert all(i.findtext("masterclipid") == master_id for i in items)
+    # Every sequence clip item refers to its file's master clip.
+    for item in root.find("sequence").iter("clipitem"):
+        master = masters[item.findtext("masterclipid")]
+        assert master.findtext("name") == item.findtext("name")
+    # Placements are untouched by the bins.
+    assert read_xmeml(write_xmeml(seq)) == read_xmeml(write_xmeml(build_sequence(*wedding, ExportOptions(bins=False))))
+
+
+def test_xmeml_without_bins_has_only_the_sequence(wedding):
+    root = ET.fromstring(write_xmeml(build_sequence(*wedding, ExportOptions(bins=False))))
+    assert [child.tag for child in root] == ["sequence"]
+
+
+def test_fcpxml_folders_are_keyword_collections(wedding):
+    seq = build_sequence(*wedding, _shoot_options())
+    text = write_fcpxml(seq)
+    event = ET.fromstring(text).find("library/event")
+    browser = event.findall("asset-clip")
+    assert sorted(c.get("name") for c in browser) == sorted(m.name for m in seq.media)
+    keywords = {c.get("name"): c.find("keyword").get("value") for c in browser}
+    assert keywords["A001.MOV"] == "Volumes / Card A" and keywords["C0001 #2.MP4"] == "Footage / Cam B"
+    for c in browser:
+        k = c.find("keyword")
+        assert (k.get("start"), k.get("duration")) == (c.get("start"), c.get("duration"))
+    folders = {
+        f.get("name"): [k.get("name") for k in f.findall("keyword-collection")]
+        for f in event.findall("collection-folder")
+    }
+    assert folders == {
+        "Footage": ["Footage / Cam B"],
+        "Volumes": ["Volumes / Card A", "Volumes / Drone", "Volumes / GoPro", "Volumes / ZOOM F8"],
+    }
+    # The project comes after the browser clips, and its timeline is the same as without bins.
+    assert [child.tag for child in event][-1] == "project"
+    assert read_fcpxml(text) == read_fcpxml(write_fcpxml(build_sequence(*wedding, ExportOptions(bins=False))))
+
+
+def test_fcpxml_keywords_have_no_commas():
+    from mcsync.export.fcpxml import keyword
+
+    assert keyword(("Smith, Jones", "Cam A")) == "Smith  Jones / Cam A"
+
+
+def test_clips_to_check_are_marked_in_the_nle(wedding):
+    seq = build_sequence(*wedding)
+    cam_b = clip(seq, "C0001 #2.MP4")  # placed by an ambiguous audio match: needs review
+    assert cam_b.review_note == "Check sync: placed by an uncertain audio match."
+    assert all(c.review_note is None for c in seq.clips if c.status != "needs_review")
+
+    sequence = ET.fromstring(write_xmeml(seq)).find("sequence")
+    items = [i for i in sequence.iter("clipitem") if i.findtext("name") == "C0001 #2.MP4"]
+    assert {i.findtext("labels/label2") for i in items} == {"Mango"}
+    markers = [m for i in items for m in i.findall("marker")]
+    assert len(markers) == 1 and markers[0].findtext("comment") == cam_b.review_note
+    assert all(i.find("labels") is None for i in sequence.iter("clipitem") if i.findtext("name") != "C0001 #2.MP4")
+
+    fcp = ET.fromstring(write_fcpxml(seq)).find("library/event/project/sequence")
+    (fcp_clip,) = [c for c in fcp.iter("asset-clip") if c.get("name") == "C0001 #2.MP4"]
+    assert fcp_clip.find("keyword").get("value") == "Check sync"
+    assert fcp_clip.find("marker").get("value") == cam_b.review_note
+    assert fcp_clip.find("marker").get("start") == fcp_clip.get("start")

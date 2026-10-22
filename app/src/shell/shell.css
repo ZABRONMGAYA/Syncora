@@ -132,6 +132,60 @@
   gap: 8px;
   pointer-events: none;
 }
+/* Launch notice for a new version (components/UpdateNotice.tsx): above the status bar, out of the work area. */
+.sy-update {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: var(--sy-z-toast);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 14px;
+  background: var(--sy-elevated);
+  border: 1px solid var(--sy-divider);
+  border-left: 2px solid var(--sy-brand-primary);
+  box-shadow: var(--sy-shadow-toast);
+}
+.sy-update__icon {
+  color: var(--sy-brand-primary);
+}
+.sy-update__title {
+  font-weight: 800;
+}
+.sy-update__body {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--sy-text-2);
+}
+.sy-update__notes {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--sy-border);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--sy-text-2);
+}
+.sy-update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sy-update__close {
+  border: 0;
+  background: transparent;
+  color: var(--sy-text-3);
+  cursor: pointer;
+  padding: 0;
+  height: 16px;
+}
+
 .sy-toast__icon--error {
   color: var(--sy-status-error);
 }

@@ -71,6 +71,7 @@ test.beforeAll(async () => {
     env: {
       ...process.env,
       MCSYNC_NO_SANDBOX: "1",
+      MCSYNC_NO_UPDATE_CHECK: "1",
       MCSYNC_NO_SPLASH: "1",
       MCSYNC_CACHE_DIR: path.join(work, "cache"),
       MCSYNC_USER_DATA: path.join(work, "user-data"),

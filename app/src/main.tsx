@@ -14,6 +14,7 @@ import "./screens/sync/sync.css";
 import "./screens/analyze/analyze.css";
 import "./screens/settings/settings.css";
 import "./features/multicam/multicam.css";
+import "./features/edit/edit.css";
 import "./styles.css";
 
 applyTheme(savedTheme());
