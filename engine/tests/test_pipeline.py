@@ -66,9 +66,11 @@ def test_staged_pipeline_synchronises_a_multi_session_production(service, produc
     assert sum(counts[c] for c in counts if c != "synchronized") == summary["clips"] + 5
     assert len(summary["sessions"]) == SMALL.sessions
 
-    # Nothing changed: the next run reuses every verified pair.
+    # Nothing changed: the next run reuses every verified pair, and the fingerprint candidates without querying.
     again = run_job(service, service.sync_run())
     assert again["matched"] == 0 and again["reused"] == result["pairs"]
+    activity = [a["text"] for a in service.pipeline._activity]
+    assert sum("candidates are reused" in text for text in activity) == 1
 
 
 def test_a_fill_decided_before_a_pause_starts_nothing(service, production, tmp_path):

@@ -26,6 +26,8 @@ from mcsync.project.db import ClipRow
 from mcsync.timecode import Timecode, parse_frame_rate, supports_drop_frame
 from mcsync.timeline import Timeline, TimelineClip
 
+from .bins import media_bins
+
 DEFAULT_RATE = Fraction(25)
 DEFAULT_SIZE = (1920, 1080)
 SEQUENCE_SAMPLE_RATE = 48_000
@@ -48,6 +50,10 @@ class ExportOptions:
     group: int = 0
     #: Also export clips placed by uncertain matches or camera clocks only (they are listed as warnings).
     include_uncertain: bool = True
+    #: Put each file in a bin that mirrors its folder (export/bins.py); off: one flat list, as the editor imports it.
+    bins: bool = True
+    #: The paths the user imported (files or folders): the top of every bin.
+    roots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,8 @@ class SourceMedia:
     #: FCPXML asset starts use it; xmeml in points count from the first frame instead.
     start: Fraction
     track_names: tuple[str, ...] = ()
+    #: Folders from the import root to the file (empty: no bins).
+    bin: tuple[str, ...] = ()
 
     @property
     def has_video(self) -> bool:
@@ -97,6 +105,8 @@ class ExportClip:
     status: str
     method: str
     drift_ppm: float = 0.0
+    #: Why the editor should check this clip's position (it needs review), shown as a marker on it in the NLE.
+    review_note: str | None = None
 
     @property
     def duration_frames(self) -> int:
@@ -122,6 +132,15 @@ class Track:
 
 
 @dataclass(frozen=True)
+class SequenceMarker:
+    """A marker on the sequence (a chapter of a first cut)."""
+
+    frame: int  # sequence frames from the sequence start
+    name: str
+    comment: str = ""
+
+
+@dataclass(frozen=True)
 class Skipped:
     clip_id: int
     name: str
@@ -144,6 +163,7 @@ class ExportSequence:
     media: tuple[SourceMedia, ...]
     skipped: tuple[Skipped, ...] = ()
     warnings: tuple[str, ...] = ()
+    markers: tuple[SequenceMarker, ...] = ()
 
     @property
     def is_ntsc(self) -> bool:
@@ -321,11 +341,13 @@ def build_sequence(
     width, height = _choose_size(chosen, rate)
     start_frame, drop_frame = _sequence_start(options, rate)
 
-    # One media entry per file, in timeline order.
+    # One media entry per file, in timeline order, each in the bin of its folder.
+    bins = media_bins((row.path for _, row in chosen), options.roots) if options.bins else {}
     media: dict[str, SourceMedia] = {}
     for _, row in chosen:
         if row.path not in media:
-            media[row.path] = source_media(f"file-{len(media) + 1}", row.info, _export_stream(row))
+            src = source_media(f"file-{len(media) + 1}", row.info, _export_stream(row))
+            media[row.path] = replace(src, bin=bins.get(row.path, ()))
 
     # Tracks follow the timeline's device tracks: cameras first, then recorders.
     video_tracks: list[Track] = []
@@ -385,6 +407,7 @@ def build_sequence(
                 status=clip.status,
                 method=clip.method,
                 drift_ppm=clip.drift_ppm,
+                review_note=review_note(clip.method) if clip.status == "needs_review" else None,
             )
         )
         if clip.status == "needs_review":
@@ -425,6 +448,19 @@ _METHOD_TEXT = {
     "timecode": "timecode that disagrees with the audio",
     "manual": "hand",
 }
+
+#: Marker text on a clip that needs review, by how it was placed: what to check in the NLE.
+_REVIEW_NOTES = {
+    "metadata": "Check sync: placed by the camera clock only, which can be up to a second off. Line it up by eye or "
+    "by its sound.",
+    "audio": "Check sync: placed by an uncertain audio match.",
+    "timecode": "Check sync: its timecode disagrees with its audio.",
+    "ai": "Check sync: proposed by AI sync from speech and picture.",
+}
+
+
+def review_note(method: str) -> str:
+    return _REVIEW_NOTES.get(method, "Check sync: Syncora is not sure of this clip's position.")
 
 
 def _resolve_rounding_overlaps(clips: list[ExportClip], warnings: list[str]) -> list[ExportClip]:

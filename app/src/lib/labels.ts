@@ -38,6 +38,7 @@ export const FLAG_LABELS: Record<string, string> = {
   user_rejected: "You rejected this match.",
   below_threshold: "The match was too weak to use.",
   ai_proposal: "Placed by AI sync from speech, light changes and the camera clocks: check it, then confirm or move it.",
+  clock_corroborated: "The camera's own clock puts the clip where its audio does: two independent confirmations.",
 };
 
 export const METHOD_LABELS: Record<TimelineClip["method"], string> = {

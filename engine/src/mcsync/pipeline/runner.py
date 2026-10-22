@@ -57,7 +57,15 @@ from mcsync.sync.candidates import (
     merge_plans,
 )
 from mcsync.sync.engine import verify_pair
-from mcsync.sync.landmarks import IndexClip, LandmarkIndex, ensure_landmarks, landmark_file, query_many
+from mcsync.sync.landmarks import (
+    IndexClip,
+    LandmarkIndex,
+    ensure_landmarks,
+    landmark_file,
+    load_candidates,
+    query_many,
+    save_candidates,
+)
 from mcsync.sync.types import ClipInput, MatchStatus, SyncMode
 
 from .discovery import Found, WalkProblem, walk
@@ -914,8 +922,14 @@ class Pipeline:
         index = LandmarkIndex.build(root, clips, self.service.params.analysis_rate)
         index.remove_others()
         self._log("Candidates", f"fingerprint index of {len(clips)} clips, {index.entries:,} hashes")
-        found: dict[str, list] = {}
+        # Kept for the extended search: weak votes (below the candidate threshold) point it at likely partners.
+        self._weak[run_id] = {"index": str(index.directory)}
         keys = [c.key for c in clips]
+        cached = load_candidates(index.directory)
+        if cached is not None and set(keys) <= set(cached):
+            self._log("Candidates", "nothing changed since the last sync: its candidates are reused")
+            return {k: cached[k] for k in keys}
+        found: dict[str, list] = {}
         pool = self.service.match_pool()
         futures = [pool.submit(query_many, str(index.directory), keys[i : i + _QUERY_BATCH])
                    for i in range(0, len(keys), _QUERY_BATCH)]  # fmt: skip
@@ -927,8 +941,7 @@ class Pipeline:
             s = self._sync or {}
             self._sync = {**s, "queried": len(found), "to_query": len(keys)}
             self._progress()
-        # Kept for the extended search: weak votes (below the candidate threshold) point it at likely partners.
-        self._weak[run_id] = {"index": str(index.directory)}
+        save_candidates(index.directory, found)
         return found
 
     def _plan_extended(self, run_id: int) -> None:

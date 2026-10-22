@@ -4,7 +4,7 @@
   "version": "1.3.0",
   "description": "Syncora: automatic synchronisation of multicamera video and external audio, from one clip to thousands",
   "author": {
-    "name": "Syncora contributors"
+    "name": "OrbitOne Studios"
   },
   "homepage": "https://github.com/ZABRONMGAYA/Syncora",
   "private": true,

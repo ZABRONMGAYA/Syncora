@@ -38,6 +38,8 @@ function installBridge(handlers: Partial<Record<Method, Handler>>): unknown[][] 
     saveReport: async () => null,
     chooseExportPath: async () => null,
     showInFolder: async () => {},
+    checkForUpdate: async () => ({ ok: false, error: "offline" }),
+    openRelease: async () => {},
     pathForFile: () => "",
     readPeaks: async () => new Uint8Array(),
     readThumbnail: async () => new Uint8Array(),

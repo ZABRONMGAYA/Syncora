@@ -254,6 +254,15 @@ used to drop the clock and keep the audio, placing a muted gimbal clip 20 minute
 calibrated by three or more confidently matched clips, the uncertain match is rejected instead (`clock_mismatch`)
 and the clip is placed by its clock, still for review. A confident match is never overruled by a clock.
 
+**Calibrated clocks confirm matches near the threshold (1.4).** The converse case: a confident audio placement
+(0.7 ≤ confidence < 0.95, typically a short overlap on a noisy camera) that lands where its device's calibrated
+clock puts it. A device's clock offset is the median of `start − recording time` over its placements of
+confidence ≥ 0.95 in the group (three or more), with a tolerance of max(1.5 s, 4 × their spread): recording times
+are whole seconds. A placement within the tolerance has two independent pieces of evidence; its remaining doubt is
+halved (`1 − (1 − c)/2`) and it carries `clock_corroborated`. Positions never change; ambiguous, weakly
+correlated, contradicted, detached and AI-proposed placements are left alone (`sync/corroborate.py`). On the hard
+benchmark (§9.1) the three gimbal clips audio placed exactly at 0.80–0.84 become synchronised.
+
 `start_s` is the **best constant placement** `x + r·D/2`: an NLE plays each clip at nominal speed from one position,
 and this centres the residual drift error (±r·D/2) on the clip. `drift_ppm` allows exact retiming (speed
 `1/(1 − drift_ppm·10⁻⁶)`) when export supports it (M6).
@@ -337,6 +346,10 @@ Measured on 4 cores (false match: reported synchronized or high confidence but m
 | standard | 1.3 | 60 / 0 / 0 | 84 | 0 | 0.32 s (clock only, review) |
 | hard | 1.2 | 0 / 0 / 60 | 24 | 0 | — (60 clips unplaced) |
 | hard | 1.3 | 43 / 17 / 0 | 67 | 0 | 0.50 s (clock only, review) |
+| hard | 1.4 | 48 / 12 / 0 | 72 | 0 | 0.44 s (clock only, review) |
+
+The 1.4 row was measured on a 12-thread Windows laptop, where 1.3 gives 45 / 15 / 0 and 69: the three gimbal clips
+gained are the clock-corroborated ones (§7.4), and the 12 left for review are the muted clips (clock only).
 
 In the hard scenario, the 17 gimbal clips left for review are the 12 muted clips (placed by the calibrated camera
 clock, within 0.5 s), 2 clips whose sound the matcher cannot single out (clock, within 0.5 s) and 3 exact audio

@@ -1,0 +1,91 @@
+/* AI first cut dialog (features/edit/FirstCutDialog.tsx): the export dialog's layout, with the plan's summary. */
+.first-cut {
+  width: min(680px, 100%);
+}
+
+.first-cut h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.first-cut h3 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+}
+
+.first-cut__progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.first-cut__progress progress {
+  width: 100%;
+  accent-color: var(--sy-brand-primary);
+}
+
+.first-cut__progress .muted {
+  grid-column: 1;
+  font-size: 12px;
+}
+
+.first-cut__progress button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.first-cut__plan .lead {
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+
+.first-cut__cameras li {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) 1fr 76px;
+  gap: 10px;
+  align-items: center;
+}
+
+.first-cut__cameras li > :last-child {
+  text-align: right;
+}
+
+.first-cut__camera-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.first-cut__bar {
+  height: 6px;
+  background: var(--border);
+}
+
+.first-cut__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--sy-brand-primary);
+}
+
+.first-cut__speakers li {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.first-cut__chapters li {
+  font-size: 12px;
+}
+
+.first-cut__actions {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.first-cut__actions label {
+  margin-right: auto;
+}

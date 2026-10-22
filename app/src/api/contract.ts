@@ -1,6 +1,8 @@
 // The engine's JSON-RPC contract (docs/ARCHITECTURE.md §6), as the desktop app sees it.
 // Kept in step with engine/src/mcsync/service/app.py; the e2e tests exercise every method used here.
 
+import type { UpdateCheck } from "../lib/updates";
+
 export const PROTOCOL_VERSION = 2;
 
 export type SyncMode = "hybrid" | "audio" | "timecode";
@@ -485,6 +487,8 @@ export interface ExportOptions {
   group?: number;
   include_uncertain?: boolean;
   name?: string;
+  /** Put each file in a bin that mirrors the folder it was imported from (default: on). */
+  bins?: boolean;
 }
 
 export interface ExportReport {
@@ -770,6 +774,49 @@ export interface EngineMethods {
   "ai.sync_accept": [{ clip_id: number; candidate?: number }, Timeline];
   "ai.sync_reject": [{ clip_id: number }, Timeline];
   "ai.fallback": [Record<string, never>, JobRef];
+  "edit.first_cut": [FirstCutParams, JobRef];
+}
+
+// ---------------------------------------------------------------- AI edit (engine/src/mcsync/edit)
+
+export type FirstCutStyle = "wedding" | "podcast";
+
+export interface FirstCutOptions {
+  min_shot_s?: number;
+  max_shot_s?: number;
+  max_pause_s?: number;
+  tighten_pauses?: boolean;
+  /** Speaker key → camera (device key) that shows them; speakers left out are guessed. */
+  speaker_angles?: Record<string, string>;
+  use_review_clips?: boolean;
+}
+
+export interface FirstCutParams {
+  style: FirstCutStyle;
+  group?: number;
+  options?: FirstCutOptions;
+  /** With a path, the cut is also written as XML in this format. */
+  format?: ExportFormat;
+  path?: string;
+  name?: string;
+  bins?: boolean;
+  start_timecode?: string;
+  sequence_rate?: string;
+}
+
+/** The result of an `edit.first_cut` job. Times are seconds into the cut. */
+export interface FirstCutPlan {
+  style: FirstCutStyle;
+  duration_s: number;
+  source_duration_s: number;
+  sections: number;
+  shots: { start_s: number; duration_s: number; clip_id: number; name: string; device: string; reason: string }[];
+  takes: number;
+  chapters: { t_s: number; label: string }[];
+  cameras: { device: string; name: string; seconds: number; main: boolean }[];
+  speakers: { key: string; name: string | null; device: string | null; guessed: boolean }[];
+  warnings: string[];
+  export?: ExportReport;
 }
 
 export type Method = keyof EngineMethods;
@@ -858,6 +905,7 @@ export const ENGINE_METHODS: readonly Method[] = [
   "ai.sync_accept",
   "ai.sync_reject",
   "ai.fallback",
+  "edit.first_cut",
 ];
 
 export type EngineState = "starting" | "ready" | "crashed" | "stopped";
@@ -901,7 +949,8 @@ export type MenuCommand =
   | "zoom-fit"
   | "export"
   | "settings"
-  | "search";
+  | "search"
+  | "first-cut";
 
 export interface RpcFailure {
   code: number;
@@ -956,6 +1005,10 @@ export interface Bridge {
   chooseExportPath(defaultName: string, format: ExportFormat): Promise<string | null>;
   /** Reveal a file this app exported in the system file manager. */
   showInFolder(path: string): Promise<void>;
+  /** The latest GitHub release compared with this version. */
+  checkForUpdate(): Promise<UpdateCheck>;
+  /** Open a page of Syncora's GitHub releases in the browser (other addresses are ignored). */
+  openRelease(url: string): Promise<void>;
   /** Filesystem path of a file dropped onto the window. */
   pathForFile(file: File): string;
   /** A poster frame (PNG) from the engine's cache. */

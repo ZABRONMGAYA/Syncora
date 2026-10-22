@@ -229,6 +229,44 @@ def test_export_through_the_service_and_cli(svc, tmp_path, wedding_shoot, capsys
     assert out.read_text() == (tmp_path / "smith.fcpxml").read_text()
 
 
+def test_first_cut_through_the_service(svc, tmp_path, wedding_shoot, capsys):
+    project = tmp_path / "wedding.syncora"
+    svc.call("project.create", path=str(project), name="Smith")
+    with pytest.raises(RpcFailure, match="unknown style"):
+        svc.call("edit.first_cut", style="music video")
+    svc.run_job("media.import", paths=[str(wedding_shoot.root)])
+    svc.run_job("sync.run", timecode_jam_synced=True)
+    with pytest.raises(RpcFailure, match="unknown first cut options"):
+        svc.call("edit.first_cut", style="wedding", options={"shot_length": 4})
+
+    plan = svc.run_job("edit.first_cut", style="wedding")
+    assert plan["style"] == "wedding" and "export" not in plan
+    assert 0 < plan["duration_s"] <= plan["source_duration_s"]
+    assert plan["shots"] and sum(s["duration_s"] for s in plan["shots"]) == pytest.approx(plan["duration_s"], abs=0.5)
+    assert any(c["main"] for c in plan["cameras"])
+    assert all(s["clip_id"] in {c["clip_id"] for c in svc.call("media.list")["clips"]} for s in plan["shots"])
+
+    out = tmp_path / "first-cut.xml"
+    written = svc.run_job("edit.first_cut", style="wedding", format="xmeml", path=str(out), sequence_rate="25")
+    report = written["export"]
+    assert report["path"] == str(out) and report["sequence"]["name"] == "Smith – first cut"
+    assert report["sequence"]["video_tracks"] == 1 and report["max_error_ms"] <= 20.0 + 1e-6
+    from mcsync.testing.nle import read_xmeml
+
+    assert read_xmeml(out.read_text())  # an NLE timeline with clip items
+    podcast = svc.run_job("edit.first_cut", style="podcast", options={"tighten_pauses": False})
+    assert podcast["style"] == "podcast" and podcast["shots"]
+
+    # The same through the command line.
+    from mcsync.cli import main
+
+    cli_out = tmp_path / "cli-cut.fcpxml"
+    assert main(["--cache-dir", str(tmp_path / "cache"), "cut", str(project), str(cli_out), "--rate", "25"]) == 0
+    printed = capsys.readouterr().out
+    assert "wedding first cut:" in printed and f"wrote {cli_out} (fcpxml)" in printed
+    assert cli_out.read_text().startswith("<?xml")
+
+
 def test_parallel_matching_through_the_service(tmp_path, wedding_shoot):
     s = InProcess(tmp_path, workers=2)
     try:

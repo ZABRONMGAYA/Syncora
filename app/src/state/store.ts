@@ -27,6 +27,7 @@ import { clock } from "../features/multicam/clock";
 import { type View, anchorClip, clampView, fitView, offsetForStart, zoomAround } from "../features/timeline/geometry";
 import { forgetPeaks } from "../features/timeline/peaks";
 import { transcriptsChanged, useAnalyze } from "./analyze";
+import { useEdit } from "./edit";
 import { useProd } from "./production";
 import { useThumbs } from "./thumbs";
 
@@ -826,6 +827,8 @@ function handleEvent(event: EngineEvent): void {
         void app.refresh().then(() => useApp.getState().fit());
       } else if (event.params.kind === "ai-sync") {
         void useAnalyze.getState().onAiJobDone(event.params.job_id, false);
+      } else if (event.params.kind === "first-cut") {
+        useEdit.getState().onJobDone(event.params.job_id, event.params.result);
       } else if (event.params.kind === "model-download") {
         app.toast("success", "Model downloaded: it works offline from now on.");
         void useAnalyze.getState().loadStatus();
@@ -839,6 +842,8 @@ function handleEvent(event: EngineEvent): void {
       else app.toast("error", `${capitalise(what)} failed: ${event.params.error}`);
       if (event.params.kind === "ai-sync") void useAnalyze.getState().onAiJobDone(event.params.job_id, true);
       if (event.params.kind === "model-download") void useAnalyze.getState().loadStatus();
+      if (event.params.kind === "first-cut")
+        useEdit.getState().onJobFailed(event.params.job_id, event.params.error, event.params.cancelled);
       break;
     }
     case "transcript.updated":
@@ -930,6 +935,9 @@ function runMenu(command: MenuCommand): void {
     case "search":
       if (hasProject) openSearch();
       break;
+    case "first-cut":
+      if (hasProject) useEdit.getState().openDialog();
+      break;
   }
 }
 
@@ -946,6 +954,7 @@ const JOB_LABELS: Record<string, string> = {
   "ai-sync": "the AI sync search",
   "ai-fallback": "the AI fallback",
   "model-download": "the model download",
+  "first-cut": "the first cut",
   rescan: "the rescan",
 };
 

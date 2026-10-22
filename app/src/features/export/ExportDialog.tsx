@@ -29,11 +29,19 @@ export interface ExportDefaults {
   rate: string; // "" = automatic
   startTimecode: string;
   includeUncertain: boolean;
+  /** Bins (Premiere Pro, Resolve) or keyword collections (Final Cut Pro) that mirror the imported folders. */
+  folderBins: boolean;
 }
 
 type Settings = ExportDefaults;
 
-const DEFAULTS: Settings = { format: "xmeml", rate: "", startTimecode: "01:00:00:00", includeUncertain: true };
+const DEFAULTS: Settings = {
+  format: "xmeml",
+  rate: "",
+  startTimecode: "01:00:00:00",
+  includeUncertain: true,
+  folderBins: true,
+};
 
 export function loadSettings(): Settings {
   try {
@@ -176,6 +184,7 @@ export function ExportDialog() {
         group: exportGroup,
         start_timecode: settings.startTimecode,
         include_uncertain: settings.includeUncertain,
+        bins: settings.folderBins,
         ...(settings.rate ? { sequence_rate: settings.rate } : {}),
       });
     } finally {
@@ -265,6 +274,15 @@ export function ExportDialog() {
                   onChange={(e) => update({ includeUncertain: e.target.checked })}
                 />
                 Include clips that need review{reviewCount ? ` (${reviewCount})` : ""}
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={settings.folderBins}
+                  onChange={(e) => update({ folderBins: e.target.checked })}
+                  data-testid="export-folder-bins"
+                />
+                Keep my folders as bins
               </label>
             </div>
             {!timecodeOk && <p className="error-text">Enter the start as HH:MM:SS:FF.</p>}

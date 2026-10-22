@@ -29,6 +29,7 @@ import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +61,9 @@ from mcsync.resources import (
 )
 from mcsync.serialize import to_jsonable
 from mcsync.service.ai_methods import AiMethods
+from mcsync.service.edit_methods import EditMethods
 from mcsync.sync.candidates import PlannedPair
+from mcsync.sync.corroborate import corroborate_with_clocks
 from mcsync.sync.engine import SyncEngine, SyncOptions, create_match_pool
 from mcsync.sync.params import DEFAULT_PARAMS, SyncParams
 from mcsync.sync.types import ClipInput, PairwiseMatch, PlacementMethod, PlacementStatus, SyncMode, SyncResult
@@ -95,7 +98,7 @@ HIGH_CONFIDENCE = 0.95
 SPEECH_MODEL_IDS = {m.id for m in SPEECH_MODELS}
 
 
-class EngineService(AiMethods):
+class EngineService(AiMethods, EditMethods):
     """All engine methods. Attached to a :class:`JsonRpcServer` for the desktop app,
     or used directly (``server=None``) by the command line."""
 
@@ -160,6 +163,7 @@ class EngineService(AiMethods):
             "markers.list", "markers.add", "markers.update", "markers.delete",
             "search.query",
             "ai.sync", "ai.sync_result", "ai.sync_accept", "ai.sync_reject", "ai.fallback",
+            "edit.first_cut",
         ):  # fmt: skip
             server.register(name, getattr(self, name.replace(".", "_")))
 
@@ -897,9 +901,21 @@ class EngineService(AiMethods):
             )
         result = self._engine().solve(clips, matches, corrections, report_edges=False)
         result = self.with_ai_proposals(result)
+        result = self._with_clock_corroboration(result, rows)
         project.save_placements(result, analysis_version=ANALYSIS_VERSION)
         placements = {int(cid): p for cid, p in result.placements.items()}
         return to_jsonable(build_timeline(rows, placements, int(result.reference_id)))
+
+    def _with_clock_corroboration(self, result: SyncResult, rows: list[ClipRow]) -> SyncResult:
+        """Audio placements a calibrated camera clock confirms gain confidence (sync/corroborate.py)."""
+        settings = self._settings()
+        if not settings.get("use_creation_time", True) or settings.get("mode") == SyncMode.AUDIO.value:
+            return result
+        clock_s = {r.engine_id: r.info.creation_time.timestamp() for r in rows if r.info.creation_time is not None}
+        device_of = {r.engine_id: r.device_key for r in rows}
+        confident = self._engine().options.solver.confident_threshold
+        placements = corroborate_with_clocks(result.placements, clock_s, device_of, confident=confident)
+        return replace(result, placements=placements)
 
     def provisional_solve(self, run_id: int) -> SyncResult:
         """Placements from a run still in progress (its matches so far), without saving them: the anchoring phase
@@ -1134,8 +1150,12 @@ class EngineService(AiMethods):
         group: int = 0,
         include_uncertain: bool = True,
         name: str | None = None,
+        bins: bool = True,
     ) -> dict:
-        """Write the synchronised timeline as FCP 7 XML ("xmeml") or FCPXML ("fcpxml"); return the report."""
+        """Write the synchronised timeline as FCP 7 XML ("xmeml") or FCPXML ("fcpxml"); return the report.
+
+        ``bins``: put every file in a bin that mirrors the folder it was imported from.
+        """
         self._require_idle({"sync"})
         project = self._require_project()
         rows = project.clips()
@@ -1146,6 +1166,8 @@ class EngineService(AiMethods):
             start_timecode=start_timecode,
             group=group,
             include_uncertain=include_uncertain,
+            bins=bins,
+            roots=tuple(r["path"] for r in project.import_roots()),
         )
         report = export_timeline(timeline, {r.id: r for r in rows}, format, path, options)
         project.record_export(format, path, report["sequence"]["rate"], report)

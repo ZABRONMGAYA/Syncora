@@ -1,8 +1,9 @@
 // SH-1 project top bar: symbol, project name, stage tabs 01–05, right cluster (Screen spec, shared parts).
-import { Search, Settings } from "lucide-react";
+import { Clapperboard, Search, Settings } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button, SyncoraSymbol, shortcut } from "../design-system/components";
+import { useEdit } from "../state/edit";
 import { type Stage, useProd } from "../state/production";
 import { openSearch, useApp } from "../state/store";
 
@@ -80,6 +81,16 @@ export function TopBar() {
           data-testid="open-search"
         >
           <Search size={14} aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="sy-btn sy-btn--icon"
+          aria-label="AI first cut"
+          title={`AI first cut: a wedding or podcast edit from the synced footage (${shortcut("⇧⌘E")})`}
+          data-testid="open-first-cut"
+          onClick={() => useEdit.getState().openDialog()}
+        >
+          <Clapperboard size={15} aria-hidden />
         </button>
         <button
           type="button"

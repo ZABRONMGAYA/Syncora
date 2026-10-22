@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.4.0 (not released yet)
+
+An AI first cut for weddings and podcasts, exports that keep your folders as bins, a notice when a new version is
+out, and fewer clips left for review.
+
+### Added
+
+- **AI first cut** (File → Create AI First Cut…, ⇧⌘E / Ctrl+Shift+E, or the clapperboard in the top bar): a first
+  edit of the synchronised timeline, made on this computer from the cameras' positions, the transcripts and the
+  sound (mcsync/edit, `edit.first_cut`).
+  - *Wedding: long version*: every moment the cameras saw, in order, the waiting in between left out; the main
+    camera through vows and speeches, other angles for variety, cuts on pauses in speech.
+  - *Podcast or interview*: first words to last, long pauses tightened; each speaker on their camera (guessed from
+    which camera microphone hears them loudest, or chosen in the dialog); the wide shot for cross-talk, short
+    interjections and, briefly, during long answers.
+  - Exported as FCP 7 XML or FCPXML: picture on V1, program sound below (recorders first), chapter markers. Sound to
+    the sample and picture within half a frame of the synchronised positions. Clips that need review are left out
+    unless allowed. A 12-hour, 2,000-clip day is planned in under 4 seconds; loudness comes from the cached waveform
+    overviews, 128 times less to read than the audio.
+- **Bins that mirror your folders** in exported XML: nested bins of master clips (Premiere Pro, Resolve), keyword
+  collections in folders (Final Cut Pro), starting at the folder you imported. Settings → Export can turn it off;
+  `mcsync export --no-bins` too.
+- **Update notice:** when Syncora opens it checks GitHub for a newer release and offers its release page (what's
+  new, Download, Skip this version). Settings → Updates: turn the check off, or check now.
+- **Developer:** OrbitOne Studios (About, installer, copyright).
+
+### Changed
+
+- **Clips to check are marked in the editor.** Clips exported while they need review are labelled orange in
+  Premiere Pro, with a "Check sync" marker saying how they were placed (FCPXML: a marker and a "Check sync"
+  keyword). A clip placed by its camera clock alone can be up to a second off; it no longer looks synchronised.
+- **Fewer clips left for review.** An audio match just below the review threshold that the camera's own calibrated
+  clock agrees with (three or more of that camera's clips placed with high confidence) is confirmed by two
+  independent pieces of evidence: its confidence is raised and it carries `clock_corroborated`
+  (sync/corroborate.py). On the hard multicamera benchmark: review 16 → 13 of 85 clips, still no false match; the
+  13 left are clips without usable sound.
+- **Re-synchronising a large project with nothing changed** reuses the fingerprint candidates of the last sync
+  instead of querying the index again (most of the 91 s of re-planning at 4,230 clips).
+
 ## 1.3.0
 
 A real multicamera preview in the Sync workspace, a synchronisation engine that places noisy gimbal and phone

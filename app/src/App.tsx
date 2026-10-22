@@ -3,6 +3,8 @@ import { type DragEvent, useEffect, useRef, useState } from "react";
 import { bridge, call } from "./api/client";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Toasts } from "./components/Toasts";
+import { UpdateNotice } from "./components/UpdateNotice";
+import { FirstCutDialog } from "./features/edit/FirstCutDialog";
 import { ExportDialog } from "./features/export/ExportDialog";
 import { SyncWorkspace } from "./features/multicam/SyncWorkspace";
 import { AnalyzeScreen } from "./screens/analyze/AnalyzeScreen";
@@ -14,8 +16,13 @@ import { SyncScreen } from "./screens/sync/SyncScreen";
 import { StatusBar } from "./shell/StatusBar";
 import { TopBar } from "./shell/TopBar";
 import { useAnalyze } from "./state/analyze";
+import { useEdit } from "./state/edit";
 import { useProd } from "./state/production";
 import { openSearch, useApp } from "./state/store";
+import { autoCheckEnabled, useUpdates } from "./state/updates";
+
+/** The launch check waits for the splash to close, so the notice appears over a settled window. */
+const UPDATE_CHECK_DELAY_MS = 4000;
 
 export function App() {
   const init = useApp((s) => s.init);
@@ -25,6 +32,12 @@ export function App() {
   const [dropping, setDropping] = useState(false);
   const dragDepth = useRef(0); // enter/leave fire for every child element
   useEffect(() => init(), [init]);
+
+  useEffect(() => {
+    if (!autoCheckEnabled()) return;
+    const timer = setTimeout(() => void useUpdates.getState().check({ launch: true }), UPDATE_CHECK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Worker counts chosen in Settings → Performance apply to every engine start.
   useEffect(() => {
@@ -124,6 +137,9 @@ export function App() {
       <ErrorBoundary what="the export dialog" onClose={() => useApp.getState().closeExport()}>
         <ExportDialog />
       </ErrorBoundary>
+      <ErrorBoundary what="the first cut" onClose={() => useEdit.getState().close()}>
+        <FirstCutDialog />
+      </ErrorBoundary>
       <ErrorBoundary what="the settings" onClose={() => useProd.getState().closeSettings()}>
         <Settings />
       </ErrorBoundary>
@@ -131,6 +147,7 @@ export function App() {
         <Dialogs />
       </ErrorBoundary>
       <Toasts />
+      <UpdateNotice />
     </div>
   );
 }
