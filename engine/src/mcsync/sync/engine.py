@@ -394,11 +394,20 @@ def verify_pair(
     stage: str,
 ) -> PairwiseMatch:
     """Match a planned pair (see :mod:`.candidates`): try each window until one gives a confident match; return
-    the most confident result. Only clock windows fall back to a full search (flagged ``clock_mismatch``)."""
+    the most confident result. Only clock windows fall back to a full search (flagged ``clock_mismatch``).
+
+    A clock-anchored window that the usual rules leave unconfirmed is measured again with windows that may disagree
+    by a few milliseconds (a camera moving among loudspeakers, ``SyncParams.anchored_inlier_tolerance_s``); that
+    measurement replaces the first only when it is confident."""
     engine = SyncEngine(options)
+    moving = SyncEngine(replace(options, params=options.params.for_moving_camera())) if stage == "anchored" else None
     best: PairwiseMatch | None = None
     for window in windows or [None]:
         match = engine.match_pair(ref, tgt, window=window, fallback=stage == "clock")
+        if moving is not None and match.status != MatchStatus.CONFIDENT:
+            second = moving.match_pair(ref, tgt, window=window, fallback=False)
+            if second.status == MatchStatus.CONFIDENT:
+                match = second
         if best is None or match.confidence > best.confidence:
             best = match
         if match.status == MatchStatus.CONFIDENT:

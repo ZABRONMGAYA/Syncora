@@ -5,7 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mcsync.sync import Flag, MatchStatus, estimate_offset, prepare_signal
+from mcsync.sync import ClipInput, Flag, MatchStatus, estimate_offset, prepare_signal
+from mcsync.sync.engine import SyncOptions, verify_pair
 from mcsync.testing.synthetic import capture, record
 
 REF_START = 60.0
@@ -254,6 +255,29 @@ def test_gimbal_camera_whose_motors_drown_the_room(mixed_scene, mixed_ref, seed)
     assert est.status == MatchStatus.CONFIDENT
     assert est.offset_s == pytest.approx(200.0 + seed, abs=HARD_TOL)
     assert est.prominence >= 15  # the same sound: the fine peak stands out
+
+
+def test_clock_anchored_search_accepts_a_camera_moving_among_loudspeakers(mixed_scene, mixed_ref):
+    """A gimbal operator walking back and forth: the sound reaches the camera up to 4 ms earlier or later from one
+    window to the next. Windows that must agree to the millisecond leave the match uncertain. Inside a calibrated
+    clock's window, a second measurement (``anchored_inlier_tolerance_s``) confirms it to well within a frame, and
+    windows where the clip is not find nothing."""
+    truth, rate, duration = 251.0, 48000, 30.0
+    raw = record(mixed_scene, start_s=REF_START + truth - 0.02, duration_s=duration + 0.04, rate=rate, snr_db=10,
+                 highpass_hz=150, reverb_rt60_s=0.3, direct_to_reverb_db=3, seed=21)  # fmt: skip
+    t = np.arange(int(duration * rate)) / rate
+    delay = 0.004 * np.sin(2 * np.pi * t / 12.0)  # ±1.4 m every 12 s
+    tgt = prepare_signal(np.interp(t + 0.02 - delay, np.arange(len(raw)) / rate, raw).astype(np.float32), rate)
+    ref_clip, tgt_clip = ClipInput("ref", audio=mixed_ref), ClipInput("tgt", audio=tgt)
+    window = (truth - 1.5, truth + 1.5)
+    assert estimate_offset(mixed_ref, tgt, search=window).status != MatchStatus.CONFIDENT
+    assert verify_pair(SyncOptions(), ref_clip, tgt_clip, [window], "landmark").status != MatchStatus.CONFIDENT
+    anchored = verify_pair(SyncOptions(), ref_clip, tgt_clip, [window], "anchored")
+    assert anchored.status == MatchStatus.CONFIDENT
+    assert anchored.offset_s == pytest.approx(truth, abs=0.002)
+    for shift in (-20.0, -7.0, 4.0, 13.0):
+        wrong = verify_pair(SyncOptions(), ref_clip, tgt_clip, [(truth + shift - 1.5, truth + shift + 1.5)], "anchored")
+        assert wrong.status != MatchStatus.CONFIDENT
 
 
 def test_narrow_search_verifies_candidates_only_where_the_sound_agrees(mixed_scene, mixed_ref):

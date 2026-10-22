@@ -3,6 +3,7 @@ the narrow searches for the clips it could not match."""
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -46,6 +47,27 @@ def test_an_unmatched_clip_is_searched_where_its_calibrated_clock_puts_it():
     ((lo, hi),) = pairs[0].windows
     assert lo < 700.0 < hi  # start(5) - start(recorder) predicted by the camera's clock
     assert hi - lo == pytest.approx(2 * ANCHOR_MIN_UNCERTAINTY_S, abs=0.01)
+
+
+def test_two_cameras_are_searched_against_each_other_while_the_recorder_is_off():
+    """Beyond every recording, cameras 2 and 3 (each calibrated by its confident clips) each have a clip that only
+    its own clock places. The two are searched against each other once, in a window covering both clocks."""
+    result, rows, inputs = setup(unmatched_start=5010.0)
+    result.placements["5"] = placement(5010.0, confidence=0.3, method=PlacementMethod.METADATA,
+                                       status=PlacementStatus.NEEDS_REVIEW)  # fmt: skip
+    for cid, start in (("6", 150.0), ("7", 350.0), ("8", 550.0)):
+        rows.append(row(cid, 3, "camera", start))
+        result.placements[cid] = placement(start)
+        inputs[cid] = clip(30.0)
+    rows.append(row("9", 3, "camera", 5000.0))
+    result.placements["9"] = placement(5000.0, confidence=0.3, method=PlacementMethod.METADATA,
+                                       status=PlacementStatus.NEEDS_REVIEW)  # fmt: skip
+    inputs["9"] = clip(60.0)
+    pairs = anchored_pairs(result, rows, inputs)
+    assert [(p.ref, p.tgt, p.stage) for p in pairs] == [("5", "9", "anchored")]  # one search for the two of them
+    ((lo, hi),) = pairs[0].windows
+    assert lo < -10.0 < hi  # start(9) - start(5)
+    assert hi - lo == pytest.approx(2 * math.hypot(ANCHOR_MIN_UNCERTAINTY_S, ANCHOR_MIN_UNCERTAINTY_S), abs=0.02)
 
 
 def test_nothing_is_searched_without_a_calibrated_clock_or_an_overlapping_reference():

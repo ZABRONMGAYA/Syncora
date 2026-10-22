@@ -17,7 +17,7 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from fractions import Fraction
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from .tools import FFmpegTools, find_tools, subprocess_flags
 _VFR_TOLERANCE = 1e-3
 _RATE_SNAP = 5e-4
 _WAV_FORMATS = {"wav", "w64", "rf64"}
+_DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class ProbeError(RuntimeError):
@@ -450,6 +451,8 @@ def _parse_datetime(text: str | None) -> datetime | None:
     if not text:
         return None
     t = text.strip().replace(" ", "T", 1)
+    if _DATE_ONLY.fullmatch(t):  # a day without a time (a Broadcast WAV's origination date) places nothing
+        return None
     if re.match(r".*[+-]\d{4}$", t):  # +0200 → +02:00
         t = t[:-2] + ":" + t[-2:]
     try:
@@ -459,6 +462,18 @@ def _parse_datetime(text: str | None) -> datetime | None:
     if dt.year < 1990:  # unset camera clocks write 1904/1970 epochs
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def usable_creation_time(creation_time: datetime | None, bwf: BwfMetadata | None) -> datetime | None:
+    """``creation_time``, unless it is a sound recorder's origination date read as midnight.
+
+    Earlier versions read a Broadcast WAV's date tag ("2026-10-15", no time) as 00:00:00 UTC. Every file of the
+    recorder then seemed to start at the same second, contradicting its sample-counted time reference, and the
+    solver sent the recorder's files for review. Projects probed then still hold that value."""
+    if creation_time is None or bwf is None or bwf.time_reference is None:
+        return creation_time
+    midnight = creation_time.utcoffset() == timedelta(0) and creation_time.time() == time(0)
+    return None if midnight else creation_time
 
 
 def _creation_time(fmt_tags: dict[str, str], video_tags: dict[str, str]) -> datetime | None:
@@ -581,4 +596,5 @@ __all__ = [
     "parse_rate",
     "probe",
     "read_sidecar",
+    "usable_creation_time",
 ]

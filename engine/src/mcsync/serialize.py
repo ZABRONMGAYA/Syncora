@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from mcsync.media.probe import AudioStreamInfo, MediaInfo, TimecodeInfo, VideoStreamInfo
+from mcsync.media.probe import AudioStreamInfo, MediaInfo, TimecodeInfo, VideoStreamInfo, usable_creation_time
 from mcsync.media.riff import BwfMetadata
 from mcsync.sync.types import (
     Candidate,
@@ -158,7 +158,19 @@ def media_info_to_dict(info: MediaInfo, *, include_raw: bool = True) -> dict:
 
 def media_info_from_dict(d: dict) -> MediaInfo:
     tc = d.get("timecode")
-    bwf = d.get("bwf")
+    raw_bwf = d.get("bwf")
+    bwf = (
+        BwfMetadata(
+            **{
+                **raw_bwf,
+                "timecode_rate": _fraction(raw_bwf.get("timecode_rate")),
+                "track_names": tuple(raw_bwf.get("track_names", ())),
+            }
+        )
+        if raw_bwf
+        else None
+    )
+    created = datetime.fromisoformat(d["creation_time"]) if d.get("creation_time") else None
     return MediaInfo(
         path=d["path"],
         size_bytes=d["size_bytes"],
@@ -173,20 +185,12 @@ def media_info_from_dict(d: dict) -> MediaInfo:
         ),
         audio=tuple(AudioStreamInfo(**a) for a in d.get("audio", ())),
         timecode=TimecodeInfo(**{**tc, "rate": _fraction(tc.get("rate"))}) if tc else None,
-        creation_time=datetime.fromisoformat(d["creation_time"]) if d.get("creation_time") else None,
+        creation_time=usable_creation_time(created, bwf),
         make=d.get("make"),
         model=d.get("model"),
         serial=d.get("serial"),
         encoder=d.get("encoder"),
-        bwf=BwfMetadata(
-            **{
-                **bwf,
-                "timecode_rate": _fraction(bwf.get("timecode_rate")),
-                "track_names": tuple(bwf.get("track_names", ())),
-            }
-        )
-        if bwf
-        else None,
+        bwf=bwf,
         format_start_s=d.get("format_start_s"),
         raw=d.get("raw") or {},
     )

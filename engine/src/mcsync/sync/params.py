@@ -7,7 +7,7 @@ external recorders (weddings, events, interviews). Every value is documented in
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,9 @@ class SyncParams:
     phat_beta: float = 0.8
     #: Windows whose lag is within this distance of the fitted line are inliers.
     inlier_tolerance_s: float = 0.001
+    #: Stop verifying a candidate when this many windows hold fewer than three agreeing ones: a true match agrees
+    #: almost everywhere. 0 visits every window.
+    early_abort_windows: int = 4
     #: Windows quieter than this (dB relative to the clip RMS) are skipped.
     window_silence_db: float = -35.0
     #: Search half-width of each fine window's correlogram used to measure how sharply its peak stands out
@@ -75,6 +78,16 @@ class SyncParams:
     #: the same sound, however faint: noise-buried camera matches measured 25–40, the beat grid of different music
     #: at most 10.
     same_sound_prominence: float = 15.0
+
+    # --- Clock-anchored searches (``verify_pair`` stage "anchored") ---------
+    #: A clip searched narrowly where its calibrated camera clock puts it, and left unconfirmed by the rules above,
+    #: is measured again with windows that may disagree by this much. A handheld or gimbal camera moving among
+    #: loudspeakers hears the sound a few milliseconds earlier or later from one window to the next (sound travels
+    #: 34 cm per millisecond): 8 ms is half a frame at 59.94 fps. Only a confident result of that measurement counts.
+    anchored_inlier_tolerance_s: float = 0.008
+    #: Fine window length of that measurement: a 30 s clip gets six windows instead of three, so one noisy window
+    #: no longer decides.
+    anchored_fine_window_s: float = 5.0
 
     # --- Classification ---------------------------------------------------
     confident_threshold: float = 0.7
@@ -97,13 +110,22 @@ class SyncParams:
             raise ValueError("need 0 < uncertain_threshold < confident_threshold <= 1")
         if self.max_candidates < 1 or self.max_fine_windows < 1:
             raise ValueError("max_candidates and max_fine_windows must be >= 1")
-        if self.min_fine_window_s > self.fine_window_s:
-            raise ValueError("min_fine_window_s must not exceed fine_window_s")
+        if self.min_fine_window_s > min(self.fine_window_s, self.anchored_fine_window_s):
+            raise ValueError("min_fine_window_s must not exceed fine_window_s or anchored_fine_window_s")
 
     @property
     def hop(self) -> int:
         """Samples per envelope frame."""
         return self.analysis_rate // self.feature_rate
+
+    def for_moving_camera(self) -> SyncParams:
+        """The fine stage of a clock-anchored search's second measurement (see ``anchored_inlier_tolerance_s``)."""
+        return replace(
+            self,
+            inlier_tolerance_s=self.anchored_inlier_tolerance_s,
+            fine_window_s=self.anchored_fine_window_s,
+            early_abort_windows=0,
+        )
 
 
 @dataclass(frozen=True)
@@ -117,6 +139,10 @@ class SolverParams:
     #: An edge is rejected when |residual| > max(outlier_sigma * sigma, outlier_min_s).
     outlier_sigma: float = 4.0
     outlier_min_s: float = 0.005
+    #: A rejected confident match that misses the solution by at most this much does not cast doubt on a clip that a
+    #: more confident match holds: two cameras that hear different loudspeakers disagree by tens of milliseconds
+    #: (sound travels 13.6 m in 40 ms) while each is right relative to the recorder.
+    conflict_tolerance_s: float = 0.04
     #: Tolerance when checking manual constraints against each other.
     manual_tolerance_s: float = 1e-6
     #: Default clock uncertainty per clock source when the reading has none.

@@ -100,8 +100,17 @@ evenly over the overlap. Each window:
   footsteps) stay at 10 or below. The match's prominence is the median over its inlier windows.
 * Windows quieter than −35 dB relative to the clip are skipped.
 * **Progressive verification:** windows are visited in a spread-out order (both ends, middle, quarters…). If fewer than
-  3 of the first 4 agree, the candidate is abandoned. True matches agree almost everywhere, so this halves the cost of
-  the many pairs that do not overlap at all, without changing any result in the test suite.
+  3 of the first 4 agree (`early_abort_windows`), the candidate is abandoned. True matches agree almost everywhere, so
+  this halves the cost of the many pairs that do not overlap at all, without changing any result in the test suite.
+* **A moving camera (1.4.2):** a gimbal or handheld camera walking among loudspeakers hears the sound a few
+  milliseconds earlier or later from one window to the next, and sometimes a second loudspeaker 20–30 ms later. In the
+  wedding that prompted this, 30 s gimbal clips had a coarse PSR of 20–35 and window prominence 12–25 at the right
+  offset, yet their window lags spread over ±1–10 ms: "2 of 4 agree", no match. Inside a calibrated clock's narrow
+  window (clock anchoring, §8.1) such a pair is measured a second time: 5 s windows (six for a 30 s clip instead of
+  three), no early abort, and windows agreeing within 8 ms (`anchored_inlier_tolerance_s`, half a frame at 59.94 fps).
+  The second measurement counts only when it is confident; otherwise the first one stands. On that wedding's
+  recorder-covered clips this took 2 confident matches out of 96 to 16, while 516 searches in deliberately shifted
+  windows (±5–20 s) stayed without a confident match.
 
 ## 5. Verification and drift
 
@@ -193,6 +202,12 @@ rejections.
    until everything is consistent. A wrong edge inside a cycle of correct ones stands out because the correct ones
    agree. Bridges (edges in no cycle) cannot be checked; they are accepted and the clip's confidence reflects the
    single edge. Components are independent, so each round rejects the worst edge of every component at once.
+5. **Second hearing (1.4.2):** when that pass is over (and calibrated clocks have vetoed the uncertain matches they
+   contradict, §7.4), the confident audio edges it rejected are restored and the rejection runs once more. Greedy
+   rejection can be fooled: in a real wedding, a 14-minute camera clip matched the recorder exactly (PSR 82) but had
+   also drawn 28 uncertain matches from gimbal clips, most of them pointing about 855 s away. Together they outweighed
+   the one right edge in least squares, so it looked like the outlier and the clip fell back to its clock. A match
+   that really disagrees is rejected again.
 
 Before solving, uncertain audio edges are reduced to bridges. Strong evidence (confident matches, precise clocks,
 manual offsets) forms groups first:
@@ -220,6 +235,12 @@ A device whose consecutive takes are contiguous to within two frames has rec-run
 relative to each other, so its timecode is not used as a clock. Files that really are one recording split in several
 are not evidence of rec run: chapters of one take, files whose creation times also follow each other, and a sound
 recorder's Broadcast WAV files (sample-counted time references, split at a size or length limit).
+
+A date without a time is not a recording time (1.4.2). A Zoom recorder's Broadcast WAV carries the day in its date
+tag and the time in its time reference; read as midnight, the date put all six files of a wedding recorder at the
+same second, the solver rejected those readings against the time references and sent five of the six files,
+reference included, for review. That also kept them out of clock anchoring, which only searches against
+synchronised references. Projects probed before then hold the midnight value; it is dropped when they are read.
 
 ### 7.4 Output
 
@@ -260,7 +281,9 @@ clock puts it. A device's clock offset is the median of `start − recording tim
 confidence ≥ 0.95 in the group (three or more), with a tolerance of max(1.5 s, 4 × their spread): recording times
 are whole seconds. A placement within the tolerance has two independent pieces of evidence; its remaining doubt is
 halved (`1 − (1 − c)/2`) and it carries `clock_corroborated`. Positions never change; ambiguous, weakly
-correlated, contradicted, detached and AI-proposed placements are left alone (`sync/corroborate.py`). On the hard
+correlated, contradicted, detached and AI-proposed placements are left alone (`sync/corroborate.py`). A
+`clock_mismatch` flag on an audio placement is not a contradiction (1.4.2): it means that an uncertain match touching
+the clip, usually another clip's, lost to a calibrated clock. On the hard
 benchmark (§9.1) the three gimbal clips audio placed exactly at 0.80–0.84 become synchronised.
 
 `start_s` is the **best constant placement** `x + r·D/2`: an NLE plays each clip at nominal speed from one position,
@@ -273,7 +296,15 @@ A clip is `needs_review` when any of these holds:
 * it is in a detached group and `detached_groups_need_review` is set (off by default: a separate session is placed
   on its own timeline);
 * its timecode disagrees with the audio consensus;
-* a confident audio match involving it had to be rejected.
+* a confident audio match involving it had to be rejected, unless that match misses by no more than an acoustic
+  delay (40 ms, `conflict_tolerance_s`: sound travels 13.6 m) and a more confident match holds the clip. Two cameras
+  that hear different loudspeakers disagree with each other by tens of milliseconds while each is right relative to
+  the recorder (1.4.2).
+
+**Placement method (1.4.2).** A clip whose only audio evidence is uncertain but which shares a precise clock with
+other placed clips (a recorder's split files and their sample-counted BWF time reference, jam-synced timecode) is
+placed by that clock, with the clock's confidence: a 45 s file of a recorder whose other files are matched exactly no
+longer waits for review because its one camera match is uncertain.
 
 Manual placements are final: they are `synced`, and the neighbours whose audio edges the user overrode are not flagged.
 
@@ -315,7 +346,10 @@ a funnel (`sync/candidates.py`):
    clip of that device still without a confident match is searched again in a narrow window (±max(1.5 s, 3 × spread)
    plus drift) around where its clock puts it, against up to 3 confidently placed recordings of other devices that
    overlap it (sound recorders first). Short, noisy clips that a full-range search cannot single out are found this
-   way; wrong windows produce no verified match (checked by searching deliberately shifted windows).
+   way; wrong windows produce no verified match (checked by searching deliberately shifted windows). These searches
+   get the moving-camera second measurement (§4). While the recorder is off, a recording that only its own
+   calibrated clock places is a reference too (after the confidently placed ones), with a window covering both clocks
+   (`√(r₁² + r₂²)`); two such clips are searched against each other once (1.4.2).
 5. **Manual:** whatever is left is reported for manual sync, never guessed.
 
 In the 4,230-clip stress production the funnel planned 26,388 pairs: 0.3 % of the 8.8 million possible pairs.
@@ -394,6 +428,8 @@ Defaults live in `sync/params.py` (`SyncParams`, `SolverParams`). Each is docume
 | `fine_window_s` / `max_fine_windows` | 10 s / 12 | Verification strength vs cost. |
 | `phat_beta` | 0.8 | Whitening strength. |
 | `inlier_tolerance_s` | 1 ms | Window agreement tolerance. |
+| `anchored_inlier_tolerance_s`, `anchored_fine_window_s` | 8 ms, 5 s | Second measurement of clock-anchored searches (moving cameras). |
 | `max_drift_ppm` | 100 | Largest clock drift tracked. |
 | `confident_threshold` / `uncertain_threshold` | 0.7 / 0.35 | Status classes. |
 | `outlier_sigma` / `outlier_min_s` | 4 / 5 ms | Solver outlier rejection. |
+| `conflict_tolerance_s` | 40 ms | A rejected match missing by an acoustic delay only does not send a firmly held clip for review. |

@@ -414,6 +414,69 @@ def test_calibrated_device_clock_outweighs_an_uncertain_contradicting_match():
     assert result.placements["A3"].start_s == pytest.approx(2700.3, abs=0.01)
 
 
+def test_a_recorders_shared_clock_outranks_an_uncertain_match():
+    """A recorder's split files share its sample-counted clock (BWF time reference). A 45 s file whose only audio
+    match is uncertain is placed exactly by that clock and is synchronised; a confident match still decides."""
+
+    def bwf(t):
+        return ClockReading(25000.0 + t, domain="tc:rec", source=ClockSource.BWF, sigma_s=1e-4)
+
+    clips = [clip("R1", 3600.0, clock=bwf(0.0), device="rec"), clip("R2", 45.0, clock=bwf(-76.0), device="rec"),
+             clip("C", 60.0, device="cam")]  # fmt: skip
+    result = solve_placements(clips, [match("R2", "C", 10.0, confidence=0.5)], reference_id="R1")
+    r2 = result.placements["R2"]
+    assert (r2.method, r2.confidence, r2.status) == (PlacementMethod.TIMECODE, 0.9, PlacementStatus.SYNCED)
+    assert r2.start_s == pytest.approx(-76.0, abs=1e-6)
+    assert result.placements["C"].status == PlacementStatus.NEEDS_REVIEW  # the camera still hangs on the guess
+    result = solve_placements(clips, [match("R2", "C", 10.0, confidence=0.95)], reference_id="R1")
+    assert result.placements["R2"].method == PlacementMethod.AUDIO
+
+
+def test_a_confident_match_outvoted_by_wrong_uncertain_ones_gets_a_second_hearing():
+    """A long camera clip T, matched confidently to the recorder, also drew a dozen uncertain matches from gimbal
+    clips that all point 855 s away (the same wrong spot). Together they outweigh the one right match in least
+    squares, so it looked like the outlier and the clip fell back to its clock. Once the clocks have thrown the
+    wrong matches out, the confident match is heard again and holds."""
+
+    def ct(device, t, error):
+        return ClockReading(1.79e9 + t + error, domain=f"ct:{device}", source=ClockSource.CREATION_TIME)
+
+    truth = {"M1": 100.0, "M2": 700.0, "M3": 1300.0, "T": 2000.0, "G1": 300.0, "G2": 900.0, "G3": 1500.0}
+    clips = [clip("R", 3600.0, device="rec")]
+    clips += [clip(c, 400.0, clock=ct("main", truth[c], 97.0), device="main") for c in ("M1", "M2", "M3", "T")]
+    clips += [clip(c, 30.0, clock=ct("gimbal", truth[c], -7980.0), device="gimbal") for c in ("G1", "G2", "G3")]
+    matches = [match("R", c, start) for c, start in truth.items()]
+    for k in range(12):
+        start = 2000.0 + 20.0 * k
+        clips.append(clip(f"W{k}", 15.0, clock=ct("gimbal", start, -7980.0), device="gimbal"))
+        matches += [match("R", f"W{k}", start, confidence=0.45), match("T", f"W{k}", start - 2855.0, confidence=0.4)]
+    result = solve_placements(clips, matches, reference_id="R")
+    t = result.placements["T"]
+    assert (t.method, t.confidence, t.status) == (PlacementMethod.AUDIO, 1.0, PlacementStatus.SYNCED)
+    assert t.start_s == pytest.approx(2000.0, abs=1e-6)
+    assert Flag.CONFLICTING_MATCHES not in t.flags
+    audio_edges = {(e.node_a, e.node_b): e for e in result.edges if e.kind == EdgeKind.AUDIO}
+    assert audio_edges[("R", "T")].status == EdgeStatus.ACCEPTED
+    assert all(audio_edges[("T", f"W{k}")].status == EdgeStatus.REJECTED for k in range(12))
+
+
+def test_cameras_hearing_different_loudspeakers_are_not_in_conflict():
+    """Two cameras each placed by a sure match with the recorder; their own match disagrees by 36 ms (they hear
+    different loudspeakers). The camera match is rejected, but it does not send either clip for review. A
+    disagreement larger than an acoustic delay still does."""
+    clips = [clip("R", 3600.0), clip("A", 80.0), clip("B", 500.0)]
+    matches = [match("R", "A", 100.0), match("R", "B", 50.0), match("A", "B", -50.0 + 0.036, confidence=0.87)]
+    result = solve_placements(clips, matches, reference_id="R")
+    for cid in ("A", "B"):
+        assert result.placements[cid].status == PlacementStatus.SYNCED
+        assert Flag.CONFLICTING_MATCHES not in result.placements[cid].flags
+    ab = [e for e in result.edges if (e.node_a, e.node_b) == ("A", "B")]
+    assert ab[0].status == EdgeStatus.REJECTED
+    matches[-1] = match("A", "B", -50.0 + 0.4, confidence=0.87)
+    result = solve_placements(clips, matches, reference_id="R")
+    assert Flag.CONFLICTING_MATCHES in result.placements["A"].flags
+
+
 def test_corroboration_counts_other_devices_holding_a_clip():
     clips = [clip("R", 600.0, device="rec"), clip("L", 600.0, device="lav"), clip("A", 60.0, device="cam"),
              clip("B", 60.0, device="cam")]  # fmt: skip

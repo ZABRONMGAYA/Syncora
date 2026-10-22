@@ -56,6 +56,15 @@ def test_doubts_the_clock_cannot_lift():
     assert all(out[cid] == placements[cid] for cid in extra)
 
 
+def test_another_clips_match_losing_to_its_clock_does_not_stop_corroboration():
+    """``clock_mismatch`` on an audio placement: an uncertain match touching it lost to a calibrated clock. It says
+    nothing about this placement, which its own clock confirms (a camera clip at 0.849 under a 0.85 threshold)."""
+    placements, clock, devices = gimbal({"cam": placed("cam", 512.25, 0.849, flags=(Flag.CLOCK_MISMATCH,))})
+    out = corroborate_with_clocks(placements, clock, devices)
+    assert out["cam"].confidence == 1 - (1 - 0.849) / 2
+    assert out["cam"].flags == (Flag.CLOCK_MISMATCH, Flag.CLOCK_CORROBORATED)
+
+
 def test_another_devices_clock_does_not_count():
     placements, clock, devices = gimbal({"phone": placed("phone", 512.25, 0.82)})
     devices["phone"] = "IPHONE"
