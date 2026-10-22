@@ -6,7 +6,7 @@
   "author": {
     "name": "Syncora contributors"
   },
-  "homepage": "https://github.com/ZABRONMGAYA/ZABRONMGAYA",
+  "homepage": "https://github.com/ZABRONMGAYA/Syncora",
   "private": true,
   "main": "dist-electron/main.js",
   "type": "module",
