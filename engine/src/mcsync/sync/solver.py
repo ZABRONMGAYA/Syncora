@@ -363,6 +363,16 @@ def solve_placements(
     for e in edges:
         if e.kind == EdgeKind.CLOCK and e.active:
             clock_members[e.i] += 1
+    # Chapters are inferred from file names, sizes and creation times. When audio places every file of a take
+    # confidently and contradicts the inference, the files were separate takes (a camera writing 7 GB files to an
+    # exFAT card looks like a 4 GB split): the chapter reading is wrong, not the clips.
+    audio_held = {n for e in edges if e.kind == EdgeKind.AUDIO and e.active
+                  and e.confidence >= params.confident_threshold for n in (e.i, e.j)}  # fmt: skip
+    takes: dict[int, list[int]] = defaultdict(list)
+    for e in edges:
+        if e.kind == EdgeKind.CLOCK and e.source == ClockSource.CHAPTER:
+            takes[e.i].append(e.j)
+    split_by_audio = {take for take, members in takes.items() if all(m in audio_held for m in members)}
 
     placements: dict[str, ClipPlacement] = {}
     for k, clip in enumerate(clips):
@@ -375,7 +385,7 @@ def solve_placements(
         comp = component[uf.find(k)[0]]
         flags: list[Flag] = []
         mine = incident[k]
-        if any(e.kind == EdgeKind.CLOCK and not e.active for e in mine):
+        if any(e.kind == EdgeKind.CLOCK and not e.active and e.i not in split_by_audio for e in mine):
             flags.append(Flag.TIMECODE_DISAGREES)
         if any(e.reason == Flag.CLOCK_MISMATCH for e in mine):
             flags.append(Flag.CLOCK_MISMATCH)  # an uncertain audio match its device's clock contradicts

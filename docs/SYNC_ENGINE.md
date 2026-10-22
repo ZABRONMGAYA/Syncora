@@ -295,7 +295,9 @@ A clip is `needs_review` when any of these holds:
 * its confidence is < 0.7;
 * it is in a detached group and `detached_groups_need_review` is set (off by default: a separate session is placed
   on its own timeline);
-* its timecode disagrees with the audio consensus;
+* its timecode disagrees with the audio consensus. Not for an inferred chapter link that audio contradicts while it
+  places every file of the take confidently (1.4.2): those files were separate takes. A gimbal writing 7 GB files to
+  an exFAT card, then starting its next take 1.3 s later, looked like one take split at 4 GB;
 * a confident audio match involving it had to be rejected, unless that match misses by no more than an acoustic
   delay (40 ms, `conflict_tolerance_s`: sound travels 13.6 m) and a more confident match holds the clip. Two cameras
   that hear different loudspeakers disagree with each other by tens of milliseconds while each is right relative to

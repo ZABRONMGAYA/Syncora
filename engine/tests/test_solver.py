@@ -477,6 +477,24 @@ def test_cameras_hearing_different_loudspeakers_are_not_in_conflict():
     assert Flag.CONFLICTING_MATCHES in result.placements["A"].flags
 
 
+def test_separate_takes_mistaken_for_chapters_are_not_sent_for_review():
+    """A gimbal wrote a 7 GB file to an exFAT card and started its next take 1.3 s later: sizes and creation times
+    made the two look like one take split at 4 GB. Audio places both files exactly and contradicts the chapter link,
+    so the link is what was wrong, and neither clip waits for review."""
+
+    def chapter(t):
+        return ClockReading(t, domain="chapter:C0377", source=ClockSource.CHAPTER)
+
+    clips = [clip("R", 3600.0), clip("A", 262.7625, clock=chapter(0.0)), clip("B", 37.037, clock=chapter(262.7625))]
+    matches = [match("R", "A", 1000.0), match("R", "B", 1000.0 + 262.7625 + 1.335)]
+    result = solve_placements(clips, matches, reference_id="R")
+    for cid in ("A", "B"):
+        assert result.placements[cid].status == PlacementStatus.SYNCED
+        assert Flag.TIMECODE_DISAGREES not in result.placements[cid].flags
+    assert result.placements["B"].start_s == pytest.approx(1264.0975, abs=1e-6)
+    assert [e.status for e in result.edges if e.kind == EdgeKind.CLOCK].count(EdgeStatus.REJECTED) == 1
+
+
 def test_corroboration_counts_other_devices_holding_a_clip():
     clips = [clip("R", 600.0, device="rec"), clip("L", 600.0, device="lav"), clip("A", 60.0, device="cam"),
              clip("B", 60.0, device="cam")]  # fmt: skip
