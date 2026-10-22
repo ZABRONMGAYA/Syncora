@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 (not released yet)
+## 1.4.0
 
 An AI first cut for weddings and podcasts, exports that keep your folders as bins, a notice when a new version is
 out, and fewer clips left for review.
