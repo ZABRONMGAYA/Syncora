@@ -30,12 +30,13 @@ MIN_TOLERANCE_S = 1.5
 SPREAD_FACTOR = 4.0
 DOUBT_KEPT = 0.5
 
-#: Doubts the clock cannot lift.
+#: Doubts the clock cannot lift. Not ``CLOCK_MISMATCH``: on an audio placement it means that an uncertain match
+#: touching the clip (usually another clip's) lost to a calibrated clock. The match that places the clip is checked
+#: against its own clock here anyway.
 _DISQUALIFYING = frozenset(
     {
         Flag.AMBIGUOUS,
         Flag.WEAK_CORRELATION,
-        Flag.CLOCK_MISMATCH,
         Flag.REJECTED_INCONSISTENT,
         Flag.CONFLICTING_MATCHES,
         Flag.TIMECODE_DISAGREES,

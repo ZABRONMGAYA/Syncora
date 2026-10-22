@@ -39,7 +39,9 @@ relative to ``max(outlier_sigma·sigma, outlier_min_s)`` is rejected and
 everything is solved again, until every remaining edge is consistent. A wrong
 edge in a cycle of correct ones stands out because the correct edges agree
 with each other. Bridges (edges in no cycle) always have zero residual; they
-cannot be checked and are reported as-is.
+cannot be checked and are reported as-is. Confident audio edges rejected in
+that first pass are heard once more after it, when the wrong edges that may
+have outvoted them are gone.
 
 Displayed start
 ---------------
@@ -305,12 +307,20 @@ def solve_placements(
             order = np.lexsort((edge_moved[bad], np.round(scores[bad], 6), comp))
             last_of_comp = np.r_[comp[order][1:] != comp[order][:-1], True]
             ea.active[bad[order[last_of_comp]]] = False
-        vetoes = _clock_vetoes(edges, ea, n_clips, moved, params) if _attempt == 0 else ([], [])
-        if not vetoes[0]:
+        if _attempt > 0:
             break
+        vetoes = _clock_vetoes(edges, ea, n_clips, moved, params)
         ea.active[vetoes[0]] = False
         ea.active[vetoes[1]] = True
         clock_vetoed.update(vetoes[0])
+        # Confident matches the first pass rejected get a second hearing once it is over: two dozen wrong uncertain
+        # matches on one clip can outweigh its one right match in least squares and make it look like the outlier,
+        # until they are rejected themselves. A match that really disagrees is rejected again.
+        second = [k for k, e in enumerate(edges) if e.active and not ea.active[k] and e.kind == EdgeKind.AUDIO
+                  and e.confidence >= params.confident_threshold and k not in clock_vetoed]  # fmt: skip
+        if not vetoes[0] and not second:
+            break
+        ea.active[second] = True
     for k, e in enumerate(edges):
         e.residual_s = float(residuals[k])
         if e.active and not ea.active[k]:
@@ -347,6 +357,12 @@ def solve_placements(
     for e in edges:
         incident[e.i].append(e)
         incident[e.j].append(e)
+    # Clips each clock domain still places (a recorder's split files, jam-synced timecode): a precise clock shared with
+    # other clips places a clip better than an uncertain match does.
+    clock_members = defaultdict(int)
+    for e in edges:
+        if e.kind == EdgeKind.CLOCK and e.active:
+            clock_members[e.i] += 1
 
     placements: dict[str, ClipPlacement] = {}
     for k, clip in enumerate(clips):
@@ -365,9 +381,14 @@ def solve_placements(
             flags.append(Flag.CLOCK_MISMATCH)  # an uncertain audio match its device's clock contradicts
         # A confident audio match the solver had to reject casts doubt on both
         # clips, unless the user placed the other clip by hand (then the user
-        # overrode the audio, and only the manual clip carries the note).
+        # overrode the audio, and only the manual clip carries the note), or the
+        # match misses by an acoustic delay only and a more confident one holds
+        # the clip.
+        held = max((e.confidence for e in mine if e.active and e.kind == EdgeKind.AUDIO), default=0.0)
         for e in mine:
             if e.kind == EdgeKind.AUDIO and not e.active and e.confidence >= params.confident_threshold:
+                if held > e.confidence and abs(e.residual_s or 0.0) <= params.conflict_tolerance_s:
+                    continue
                 other = node_names[e.j if e.i == k else e.i]
                 if cid in manual_clips or other not in manual_clips:
                     flags.append(Flag.CONFLICTING_MATCHES)
@@ -383,13 +404,16 @@ def solve_placements(
 
         active_audio = [e for e in mine if e.active and e.kind == EdgeKind.AUDIO]
         active_clock = [e for e in mine if e.active and e.kind == EdgeKind.CLOCK]
+        audio_confidence = max((e.confidence for e in active_audio), default=0.0)
+        shared = [e for e in active_clock if e.sigma_s <= params.precise_clock_sigma_s and clock_members[e.i] > 1]
+        shared_clock = max((e.confidence for e in shared), default=0.0)
         if k == ref_node:
             method, confidence = PlacementMethod.REFERENCE, 1.0
         elif cid in manual_clips:
             method, confidence = PlacementMethod.MANUAL, 1.0
             flags.append(Flag.MANUAL)
-        elif active_audio:
-            method, confidence = PlacementMethod.AUDIO, max(e.confidence for e in active_audio)
+        elif active_audio and (audio_confidence >= params.confident_threshold or audio_confidence >= shared_clock):
+            method, confidence = PlacementMethod.AUDIO, audio_confidence
         elif active_clock:
             best = max(active_clock, key=lambda e: e.confidence)
             method, confidence = _CLOCK_METHOD[best.source], best.confidence  # type: ignore[index]

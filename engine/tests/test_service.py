@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -72,6 +73,28 @@ def svc(tmp_path):
     s = InProcess(tmp_path)
     yield s
     s.service.close()
+
+
+def test_sync_summary_counts_every_clip_of_a_source(tmp_path, monkeypatch):
+    """A source's clip count is its number of clips. Summing its categories left out the "synchronized" clips
+    (that count also holds the confirmed and high-confidence ones): a camera of 42 clips showed 34."""
+    service = EngineService(cache_dir=str(tmp_path / "cache"))
+    rows = [[1, "high_confidence", 1.0], [1, "synchronized", 0.9], [1, "synchronized", 0.88], [1, "review", 0.3],
+            [2, "confirmed", 1.0]]  # fmt: skip
+    devices = [{"id": 1, "name": "Gimbal", "kind": "camera"}, {"id": 2, "name": "Sound", "kind": "recorder"}]
+    index = {"columns": ["device_id", "category", "confidence"], "rows": rows, "devices": devices}
+    project = SimpleNamespace(discovery_counts=lambda: {"by_status": {}}, sessions=list, last_completed_run=lambda: 1)
+    monkeypatch.setattr(service, "media_index", lambda: index)
+    monkeypatch.setattr(service, "_require_project", lambda: project)
+    monkeypatch.setattr(service, "_pipeline", lambda: SimpleNamespace(sync_state=None))
+    monkeypatch.setattr(service, "_settings", lambda: {"review_threshold": 0.85})
+    try:
+        summary = service.sync_summary()
+    finally:
+        service.close()
+    gimbal, sound = summary["sources"]
+    assert (gimbal["clips"], sound["clips"], summary["clips"]) == (4, 1, 5)
+    assert gimbal["counts"]["synchronized"] == 3  # every automatically synchronised clip
 
 
 def test_protocol_errors(svc):

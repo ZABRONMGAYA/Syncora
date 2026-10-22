@@ -958,12 +958,14 @@ class EngineService(AiMethods, EditMethods):
                       "pending")  # fmt: skip
         total = Counter()
         per_device: dict[int | None, Counter] = defaultdict(Counter)
+        clips_of: Counter = Counter()
         conf: dict[int | None, list[float]] = defaultdict(list)
         for row in index["rows"]:
             cat = row[cols["category"]]
             dev = row[cols["device_id"]]
             total[cat] += 1
             per_device[dev][cat] += 1
+            clips_of[dev] += 1
             if cat in ("confirmed", "high_confidence"):  # "synchronized" counts every automatically synced clip
                 total["synchronized"] += 1
                 per_device[dev]["synchronized"] += 1
@@ -976,7 +978,7 @@ class EngineService(AiMethods, EditMethods):
             values = sorted(conf[dev])
             sources.append({
                 "device_id": dev, "name": d.get("name", "Unassigned"), "kind": d.get("kind"),
-                "clips": sum(counts[c] for c in categories if c != "synchronized"),
+                "clips": clips_of[dev],  # not a sum of counts: "synchronized" also counts confirmed clips
                 "counts": {c: counts[c] for c in categories},
                 "median_confidence": values[len(values) // 2] if values else None,
                 "min_confidence": values[0] if values else None,

@@ -1181,9 +1181,11 @@ def anchored_pairs(
 
     For each device and sync group, the clock offset is the median of ``start - recording time`` over the clips
     of that device confident audio matches placed there. Every other clip of the device (no confident match) is
-    compared with up to ``ANCHOR_REFERENCES`` confidently placed recordings of other devices it overlaps there
-    (sound recorders first, then the longest overlap), within ``ANCHOR_MIN_UNCERTAINTY_S`` (or three times the
-    offsets' spread) of the predicted position.
+    compared with up to ``ANCHOR_REFERENCES`` recordings of other devices it overlaps there, within
+    ``ANCHOR_MIN_UNCERTAINTY_S`` (or three times the offsets' spread) of the predicted position. Sound recorders come
+    first, then confidently placed recordings, then the longest overlap. A recording that only its own device's
+    calibrated clock places is a reference too (while the recorder was off, two cameras can still hear each other);
+    the window then covers both clocks' uncertainty.
     """
     from mcsync.sync.types import PlacementMethod, PlacementStatus
 
@@ -1195,6 +1197,10 @@ def anchored_pairs(
         return (p is not None and p.start_s is not None and p.status == PlacementStatus.SYNCED
                 and p.method in (PlacementMethod.AUDIO, PlacementMethod.REFERENCE, PlacementMethod.MANUAL)
                 and p.confidence >= confident)  # fmt: skip
+
+    def clock_placed(cid: str) -> bool:
+        p = placements.get(cid)
+        return p is not None and p.start_s is not None and p.method == PlacementMethod.METADATA
 
     offsets: dict[tuple, list[float]] = defaultdict(list)
     for cid, p in placements.items():
@@ -1208,16 +1214,25 @@ def anchored_pairs(
         spread = float(np.median(np.abs(np.array(values) - med)) * 1.4826) if len(values) >= 3 else 0.0
         calib[key] = (med, max(ANCHOR_MIN_UNCERTAINTY_S, 3.0 * spread))
 
-    placed_refs: dict[int, list[tuple[float, float, str, bool]]] = defaultdict(list)  # group -> (start, end, id, rec)
+    # group -> (start, end, id, recorder, uncertainty of the start: 0 when audio placed it)
+    placed_refs: dict[int, list[tuple[float, float, str, bool, float]]] = defaultdict(list)
     for cid, p in placements.items():
         row = by_id.get(cid)
         clip = inputs.get(cid)
-        if row is None or clip is None or clip.audio is None or not confident_audio(cid):
+        if row is None or clip is None or clip.audio is None:
             continue
-        placed_refs[p.group].append((p.start_s, p.start_s + float(clip.duration_s or 0.0), cid,
-                                     row.device_kind == "recorder"))  # fmt: skip
+        if confident_audio(cid):
+            start, uncertainty = p.start_s, 0.0
+        elif clock_placed(cid) and row.info.creation_time is not None and (row.device_id, p.group) in calib:
+            offset, uncertainty = calib[(row.device_id, p.group)]
+            start = row.info.creation_time.timestamp() + offset
+        else:
+            continue
+        placed_refs[p.group].append((start, start + float(clip.duration_s or 0.0), cid, row.device_kind == "recorder",
+                                     uncertainty))  # fmt: skip
 
     out: list[PlannedPair] = []
+    planned: set[tuple[str, str]] = set()
     for cid, clip in inputs.items():
         row = by_id.get(cid)
         if row is None or clip.audio is None or row.info.creation_time is None or confident_audio(cid):
@@ -1228,19 +1243,22 @@ def anchored_pairs(
             if device != row.device_id:
                 continue
             start = ct + offset  # predicted start in the group's time
-            radius += DRIFT_ALLOWANCE * dur
             refs = []
-            for r_start, r_end, rid, is_rec in placed_refs.get(group, ()):
+            for r_start, r_end, rid, is_rec, r_uncertainty in placed_refs.get(group, ()):
                 ref_row = by_id.get(rid)
                 if rid == cid or (ref_row is not None and ref_row.device_id == row.device_id):
                     continue
                 overlap = min(start + dur, r_end) - max(start, r_start)
                 if overlap >= ANCHOR_MIN_OVERLAP_S:
-                    refs.append((not is_rec, -overlap, rid, r_start))
-            for _, _, rid, r_start in sorted(refs)[:ANCHOR_REFERENCES]:
+                    refs.append((not is_rec, r_uncertainty > 0.0, -overlap, rid, r_start, r_uncertainty))
+            for *_, rid, r_start, r_uncertainty in sorted(refs)[:ANCHOR_REFERENCES]:
                 predicted = start - r_start  # start(clip) - start(reference)
-                ref, tgt, lo, hi = rid, cid, predicted - radius, predicted + radius
+                half = float(np.hypot(radius, r_uncertainty)) + DRIFT_ALLOWANCE * dur  # independent clocks
+                ref, tgt, lo, hi = rid, cid, predicted - half, predicted + half
                 if ref > tgt:
                     ref, tgt, lo, hi = tgt, ref, -hi, -lo
+                if (ref, tgt) in planned:  # two clock-placed clips, each the other's reference
+                    continue
+                planned.add((ref, tgt))
                 out.append(PlannedPair(ref, tgt, [(round(lo, 3), round(hi, 3))], "anchored"))
     return out

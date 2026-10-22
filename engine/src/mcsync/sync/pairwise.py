@@ -36,9 +36,7 @@ _MIN_SLOPE_STD = 0.05e-6
 #: competing explanation, i.e. the match is ambiguous.
 _AMBIGUITY_RATIO = 0.8
 _MIN_VERIFIED_INLIERS = 3
-#: Stop verifying a candidate when this many windows yield fewer than
-#: ``_EARLY_ABORT_MIN_INLIERS`` agreeing ones: a true match agrees almost everywhere.
-_EARLY_ABORT_WINDOWS = 4
+#: Agreeing windows the first ``params.early_abort_windows`` must hold for verification to go on.
 _EARLY_ABORT_MIN_INLIERS = 3
 #: Searches at most this wide (seconds) verify their best candidates whatever their coarse PSR: a few seconds of
 #: envelope correlogram hold too few lags for a meaningful PSR, so the fine stage (GCC-PHAT windows agreeing to the
@@ -385,7 +383,7 @@ def _refine(ref: AnalysisSignal, tgt: AnalysisSignal, coarse_offset_s: float, pa
         lags.append((lag0 - radius + k) / fs)
         rhos.append(pearson(seg_r[wide - radius + i : wide - radius + i + win], seg_t))
         proms.append((float(corr[i]) - med) / spread)
-        if len(lags) == _EARLY_ABORT_WINDOWS and len(starts) > _EARLY_ABORT_WINDOWS:
+        if len(lags) == params.early_abort_windows and len(starts) > params.early_abort_windows:
             probe = _fit_lag_line(np.array(times), np.array(lags), params, fs)
             if probe.inliers.sum() < _EARLY_ABORT_MIN_INLIERS:
                 break

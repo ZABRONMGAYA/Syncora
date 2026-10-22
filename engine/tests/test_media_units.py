@@ -16,8 +16,9 @@ from mcsync.media.cache import AnalysisCache, params_key
 from mcsync.media.devices import card_root, file_family, find_chapters, identify_device, is_record_run
 from mcsync.media.fingerprint import fingerprint
 from mcsync.media.probe import MediaInfo, ProbeError, TimecodeInfo, parse_probe, parse_rate, read_sidecar
-from mcsync.media.riff import read_bwf
+from mcsync.media.riff import BwfMetadata, read_bwf
 from mcsync.media.waveform import PEAK_LEVELS, PeakBuilder, decode_peaks, read_peaks, write_peaks
+from mcsync.serialize import media_info_from_dict, media_info_to_dict
 from mcsync.sync import SyncParams
 
 # ---------------------------------------------------------------------------
@@ -131,6 +132,21 @@ def test_creation_time_variants():
     assert unset.creation_time is None
     naive = parse([video(), audio()], fmt({"creation_time": "2026-06-14 15:04:05"}))
     assert naive.creation_time == datetime(2026, 6, 14, 15, 4, 5, tzinfo=UTC)
+
+
+def test_a_recorders_origination_date_alone_is_no_recording_time():
+    """A Zoom recorder's Broadcast WAV holds the day in its date tag and the time in its time reference. The day
+    alone is not a recording time: read as midnight, it put all six files of a wedding recorder at the same second."""
+    tags = {"date": "2026-10-15", "time_reference": "1265424000"}
+    wav = parse([audio(index=0)], fmt(tags, name="wav"), bwf=BwfMetadata(time_reference=1_265_424_000))
+    assert wav.creation_time is None
+    assert wav.timecode is not None and wav.timecode.seconds == 26363.0  # 07:19:23, from the time reference
+    # Projects probed by earlier versions hold the date as midnight: it is dropped when they are read.
+    stored = media_info_to_dict(replace(wav, creation_time=datetime(2026, 10, 15, tzinfo=UTC)))
+    assert media_info_from_dict(stored).creation_time is None
+    # A camera that really started at midnight keeps its time.
+    camera = parse([video(), audio()], fmt({"creation_time": "2026-10-15T00:00:00.000000Z"}))
+    assert media_info_from_dict(media_info_to_dict(camera)).creation_time == datetime(2026, 10, 15, tzinfo=UTC)
 
 
 def test_device_fields():
