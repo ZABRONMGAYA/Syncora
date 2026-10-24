@@ -201,6 +201,20 @@ h3 {
   border: 1px solid color-mix(in srgb, var(--sy-status-error) 40%, transparent);
 }
 
+/* Export XML and the AI first cut without a running plan (components/ActivateDialog.tsx PlanRequired). */
+:where(.workspace, .modal-backdrop) .notice.plan-required {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  background: color-mix(in srgb, var(--sy-status-warning) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sy-status-warning) 40%, transparent);
+}
+:where(.workspace, .modal-backdrop) .notice.plan-required svg {
+  margin-top: 2px;
+  color: var(--sy-status-warning);
+}
+
 :where(.workspace, .modal-backdrop) .notice pre {
   white-space: pre-wrap;
   font-size: 11px;

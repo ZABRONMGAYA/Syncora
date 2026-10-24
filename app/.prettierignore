@@ -3,3 +3,5 @@ dist-electron
 test-results
 package-lock.json
 release
+# Vendored unchanged from the KineticLane repository (electron/vendor/README.md)
+electron/vendor/activation-code.js

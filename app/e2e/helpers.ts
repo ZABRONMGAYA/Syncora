@@ -1,9 +1,46 @@
-// Shared by the end-to-end suites: closing the app within a time limit, and the engine's log when something fails.
+// Shared by the end-to-end suites: closing the app within a time limit, the engine's log when something fails, and
+// an activation code for the suites that export.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import type { ElectronApplication, Page } from "@playwright/test";
+
+import "../electron/vendor/activation-code.js";
+
+export interface TestActivation {
+  /** A code this app accepts: a year for Syncora. */
+  code: string;
+  /** For electron.launch: the throwaway public key a development build then accepts. */
+  env: Record<string, string>;
+}
+
+/**
+ * Writing XML and the AI first cut need a running plan. A development build accepts codes signed with a throwaway key
+ * (MCSYNC_ACTIVATION_PUBLIC_KEY); an installed Syncora only OrbitOne's, so it needs a real code from the Code Maker
+ * in MCSYNC_E2E_ACTIVATION_CODE (a secret in the release workflow). null: an installed app without one.
+ */
+export async function testActivation(): Promise<TestActivation | null> {
+  if (process.env.MCSYNC_E2E_ACTIVATION_CODE) return { code: process.env.MCSYNC_E2E_ACTIVATION_CODE, env: {} };
+  if (process.env.MCSYNC_E2E_APP) return null;
+  const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
+  const key = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const A = globalThis.OrbitActivation;
+  const code = await A.makeCode(
+    { product: "syncora", plan: "year", expires: A.planExpiry("year", A.localToday()) },
+    key,
+  );
+  return { code, env: { MCSYNC_ACTIVATION_PUBLIC_KEY: key.x! } };
+}
+
+/** The activation code, saved as if it had been pasted into the Activate dialog before the app opens. */
+export function saveActivation(userData: string, code: string): void {
+  fs.mkdirSync(userData, { recursive: true });
+  fs.writeFileSync(path.join(userData, "activation.json"), JSON.stringify({ code }));
+}
+
+export const NO_TEST_CODE =
+  "Exporting from an installed Syncora needs an active plan: set MCSYNC_E2E_ACTIVATION_CODE to a Syncora code from the Code Maker";
 
 /**
  * The app's main window. The S00 splash opens alongside it while the engine starts and may load first, so the

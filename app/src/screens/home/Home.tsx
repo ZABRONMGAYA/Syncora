@@ -14,7 +14,9 @@ import {
 import { useState } from "react";
 
 import { Button, KeyHint, SyncoraSymbol, shortcut } from "../../design-system/components";
+import { isActivated, longDate, planName } from "../../lib/activation";
 import { PRESETS, defaultPresetId, setDefaultPreset } from "../../lib/presets";
+import { useActivation } from "../../state/activation";
 import { useProd } from "../../state/production";
 import { usePick } from "../../state/store";
 
@@ -27,6 +29,7 @@ type Page = "home" | "presets" | "learn";
 export function Home() {
   const { engine, recent, newProject, openProject } = usePick("engine", "recent", "newProject", "openProject");
   const [page, setPage] = useState<Page>("home");
+  const activation = useActivation((s) => s.status);
   const ready = engine.state === "ready";
   const ffmpegMissing = ready && !engine.hello?.ffmpeg;
 
@@ -78,8 +81,16 @@ export function Home() {
           >
             <Settings size={16} aria-hidden /> Settings
           </button>
-          <div className="sy-home__license">
-            <div>Syncora</div>
+          <div className="sy-home__license" data-testid="home-license">
+            <div>
+              {activation?.plan && isActivated(activation)
+                ? `${planName(activation.plan.plan)} · until ${longDate(activation.plan.expires)}`
+                : activation?.state === "expired"
+                  ? "Plan ended"
+                  : activation
+                    ? "Not activated"
+                    : "Syncora"}
+            </div>
             <div>v{engine.hello?.version ?? "…"}</div>
           </div>
         </div>

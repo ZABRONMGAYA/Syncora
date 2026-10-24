@@ -135,6 +135,25 @@ is ever deleted from disk. "Remove from project" (bulk action, with confirmation
 **D-12 Resume.** Not drawn. Reopening a project with unfinished work shows a dialog: "Previous analysis found" with
 counts per kind of work, and the choices Later, Restart or Resume.
 
+**D-13 Activation.** Not drawn: the handoff shows only a licence block on Home ("Studio · Mgaya Studios") and
+"Licensed to · License" in the Brand Kit About. Codes are anonymous (no licensee name, no seats), so:
+
+- The **Activate dialog** is the S16 Dialog (520 wide, KeyRound icon, footer with the safe action left and the one
+  primary right) with one field, "Paste your activation code" (a mono text area, since a code is 117 characters).
+  A refused code uses the S16 FieldError pattern: label and message in the accent red, field border in the error red,
+  with a CircleX icon. Accepted, the dialog title becomes "Syncora is activated" with a green Check (a success tone
+  added to Dialog) and the plan as a key–value list.
+- The **status bar** carries the notice (it is on Home and in projects; the top bar is not on Home): KeyRound "Not
+  activated", amber TriangleAlert "Plan ends in *n* days", red CircleX "Plan ended *date*", each followed by its
+  action word in the ErrorToast action style. Nothing shows while a plan runs with more than 7 days left.
+- The **reminder** reuses the new-version notice shown at launch (`UpdateNotice`) with an amber or red edge; the two
+  stack when both show.
+- **Export XML and the AI first cut** need a running plan (owner's decision, 2026-10-24). Without one their dialogs
+  keep every option and show a notice (KeyRound, amber edge, as the dialogs' other notices) and put "Activate…" in
+  the primary button's place; the Activate dialog opens above them.
+- **Settings → Activation** and an Activation row in About follow the SettingRow and key–value patterns. The Home
+  licence block's first line shows the plan ("1 year · until 24 October 2027") or "Not activated".
+
 ## Verification
 
 - `app/e2e/app.spec.ts` covers the editor workflow: home, import, search, sync, timeline, drag / undo, snap, reject,

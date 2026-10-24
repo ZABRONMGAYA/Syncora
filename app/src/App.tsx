@@ -1,6 +1,8 @@
 import { type DragEvent, useEffect, useRef, useState } from "react";
 
 import { bridge, call } from "./api/client";
+import { ActivateDialog } from "./components/ActivateDialog";
+import { ActivationNotice } from "./components/ActivationNotice";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Toasts } from "./components/Toasts";
 import { UpdateNotice } from "./components/UpdateNotice";
@@ -15,6 +17,7 @@ import { Settings, savedWorkers } from "./screens/settings/Settings";
 import { SyncScreen } from "./screens/sync/SyncScreen";
 import { StatusBar } from "./shell/StatusBar";
 import { TopBar } from "./shell/TopBar";
+import { useActivation } from "./state/activation";
 import { useAnalyze } from "./state/analyze";
 import { useEdit } from "./state/edit";
 import { useProd } from "./state/production";
@@ -23,6 +26,8 @@ import { autoCheckEnabled, useUpdates } from "./state/updates";
 
 /** The launch check waits for the splash to close, so the notice appears over a settled window. */
 const UPDATE_CHECK_DELAY_MS = 4000;
+/** The saved activation code is checked again while Syncora stays open: a plan's end is noticed, reminders come daily. */
+const ACTIVATION_RECHECK_MS = 60 * 60 * 1000;
 
 export function App() {
   const init = useApp((s) => s.init);
@@ -37,6 +42,12 @@ export function App() {
     if (!autoCheckEnabled()) return;
     const timer = setTimeout(() => void useUpdates.getState().check({ launch: true }), UPDATE_CHECK_DELAY_MS);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    void useActivation.getState().load();
+    const timer = setInterval(() => void useActivation.getState().load(), ACTIVATION_RECHECK_MS);
+    return () => clearInterval(timer);
   }, []);
 
   // Worker counts chosen in Settings → Performance apply to every engine start.
@@ -146,8 +157,14 @@ export function App() {
       <ErrorBoundary what="the dialog" onClose={() => useProd.getState().openDialog(null)}>
         <Dialogs />
       </ErrorBoundary>
+      <ErrorBoundary what="the activation" onClose={() => useActivation.getState().closeDialog()}>
+        <ActivateDialog />
+      </ErrorBoundary>
       <Toasts />
-      <UpdateNotice />
+      <div className="sy-notices">
+        <ActivationNotice />
+        <UpdateNotice />
+      </div>
     </div>
   );
 }

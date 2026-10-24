@@ -135,3 +135,67 @@
   font-size: 11px;
   color: var(--sy-text-3);
 }
+
+/* Activate dialog (components/ActivateDialog.tsx): above the Settings sheet it can be opened from. */
+.sy-over-settings {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--sy-z-modal) + 1);
+}
+.sy-activate__facts {
+  margin: 4px 0 4px;
+  padding: 12px 0;
+  border-top: 1px solid var(--sy-border);
+  border-bottom: 1px solid var(--sy-border);
+  color: var(--sy-text);
+}
+.sy-activate__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+.sy-activate--error {
+  color: var(--sy-status-error);
+}
+.sy-activate__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sy-text);
+}
+/* S16 FieldError: label and message in the accent red, the field's border in the error red. */
+.sy-activate__label[data-error] {
+  color: var(--sy-brand-accent);
+}
+.sy-activate__code {
+  height: auto;
+  width: 100%;
+  padding: 8px 10px;
+  resize: none;
+  font-family: var(--sy-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.sy-activate__code[aria-invalid="true"] {
+  border-color: var(--sy-status-error);
+}
+.sy-activate__error {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--sy-brand-accent);
+}
+.sy-activate__error svg {
+  margin-top: 2px;
+}
+.sy-settings__activation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}

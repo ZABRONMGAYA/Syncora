@@ -1,9 +1,10 @@
 // AI edit: a first cut of the synchronised timeline (engine: edit.first_cut), planned, reviewed, then exported as XML.
 import { create } from "zustand";
 
-import { bridge, call } from "../api/client";
+import { EngineError, ErrorCode, bridge, call } from "../api/client";
 import type { ExportFormat, FirstCutOptions, FirstCutPlan, FirstCutStyle } from "../api/contract";
 import { loadSettings as loadExportDefaults } from "../features/export/ExportDialog";
+import { useActivation } from "./activation";
 import { useApp } from "./store";
 
 const SETTINGS_KEY = "syncora.firstCut";
@@ -47,6 +48,12 @@ function saveSettings(settings: FirstCutSettings): void {
   } catch {
     // a convenience only
   }
+}
+
+/** A request the engine (or the main process) refused; without a running plan the dialog asks for a code from now on. */
+function failed(err: unknown): void {
+  useEdit.setState({ error: err instanceof Error ? err.message : String(err) });
+  if (err instanceof EngineError && err.code === ErrorCode.activationRequired) void useActivation.getState().load();
 }
 
 export function cutOptions(settings: FirstCutSettings, speakerAngles: Record<string, string>): FirstCutOptions {
@@ -120,7 +127,7 @@ export const useEdit = create<EditState>((set, get) => ({
       });
       set({ jobId: job_id, purpose: "plan" });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      failed(err);
     }
   },
   async exportCut() {
@@ -141,7 +148,7 @@ export const useEdit = create<EditState>((set, get) => ({
       });
       set({ jobId: job_id, purpose: "export" });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      failed(err);
     }
   },
   async cancel() {

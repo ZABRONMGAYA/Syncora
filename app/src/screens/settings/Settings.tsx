@@ -3,6 +3,7 @@ import { Download, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { call } from "../../api/client";
+import { ActivationBadge } from "../../components/ActivateDialog";
 import type { AiModel, CacheInfo, SystemResources, WorkerPlan } from "../../api/contract";
 import { Button, Segmented, Select, SettingRow, Toggle, shortcut } from "../../design-system/components";
 import {
@@ -10,7 +11,9 @@ import {
   loadSettings as loadExportDefaults,
   saveSettings as saveExportDefaults,
 } from "../../features/export/ExportDialog";
+import { REMIND_DAYS, daysLeftText, isActivated, longDate, planName, productName } from "../../lib/activation";
 import { RELEASES_PAGE } from "../../lib/updates";
+import { useActivation } from "../../state/activation";
 import { useAnalyze } from "../../state/analyze";
 import { type SettingsCategory, useProd } from "../../state/production";
 import { useApp } from "../../state/store";
@@ -31,6 +34,7 @@ const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: "shortcuts", label: "Keyboard shortcuts" },
   { id: "storage", label: "Storage" },
   { id: "privacy", label: "Privacy" },
+  { id: "activation", label: "Activation" },
   { id: "updates", label: "Updates" },
   { id: "about", label: "About" },
 ];
@@ -69,7 +73,8 @@ export function Settings() {
   const category = useProd((s) => s.settings);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") useProd.getState().closeSettings();
+      // Escape in the Activate dialog (opened from here, above the sheet) closes that dialog only.
+      if (e.key === "Escape" && !useActivation.getState().dialog) useProd.getState().closeSettings();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -114,6 +119,7 @@ export function Settings() {
         {category === "export" && <ExportPane />}
         {category === "shortcuts" && <ShortcutsPane />}
         {category === "privacy" && <PrivacyPane />}
+        {category === "activation" && <ActivationPane />}
         {category === "updates" && <UpdatesPane />}
       </main>
     </div>
@@ -415,6 +421,7 @@ function GeneralPane() {
 // DESIGN-OPEN: #12 About is drawn light in the Brand Kit; here it follows the app theme (DESIGN_DECISIONS.md D-10).
 function AboutPane() {
   const hello = useApp((s) => s.engine.hello);
+  const activation = useActivation((s) => s.status);
   return (
     <>
       <PaneHead title="About" sub="Syncora: automatic synchronisation of multicamera video and external audio." />
@@ -423,6 +430,23 @@ function AboutPane() {
         <dd>OrbitOne Studios</dd>
         <dt>Version</dt>
         <dd>{hello?.version ?? "…"}</dd>
+        <dt>Activation</dt>
+        <dd className="sy-settings__activation">
+          {activation && <ActivationBadge status={activation} />}
+          {activation?.plan && (
+            <span className="sy-dim">
+              {planName(activation.plan.plan)} · last day {longDate(activation.plan.expires)}
+            </span>
+          )}
+          <Button
+            variant="secondary"
+            size="compact"
+            onClick={() => useActivation.getState().openDialog()}
+            data-testid="about-activate"
+          >
+            {isActivated(activation) ? "Enter new code…" : "Activate…"}
+          </Button>
+        </dd>
         <dt>Engine</dt>
         <dd>Protocol {hello?.protocol ?? "…"}</dd>
         <dt>FFmpeg</dt>
@@ -852,8 +876,69 @@ function PrivacyPane() {
       >
         <span className="sy-dim">Update check and model downloads</span>
       </SettingRow>
+      <SettingRow
+        title="Activation"
+        description="Your activation code is checked on this computer. It is never sent anywhere, and there is no account."
+      >
+        <span className="sy-dim">On this computer</span>
+      </SettingRow>
       <SettingRow title="Usage data" description="Syncora collects no analytics, telemetry or crash reports.">
         <span className="sy-dim">None</span>
+      </SettingRow>
+    </>
+  );
+}
+
+function ActivationPane() {
+  const status = useActivation((s) => s.status);
+  useEffect(() => void useActivation.getState().load(), []);
+  const plan = status?.plan;
+  const running = isActivated(status);
+  return (
+    <>
+      <PaneHead
+        title="Activation"
+        sub="Syncora checks your activation code on this computer, each time it opens. No internet or account needed."
+      />
+      <div className="sy-kv sy-settings__facts">
+        <dt>Status</dt>
+        <dd>{status ? <ActivationBadge status={status} /> : "…"}</dd>
+        {plan && (
+          <>
+            <dt>Plan</dt>
+            <dd>
+              {planName(plan.plan)} · {productName(plan.product)}
+            </dd>
+            <dt>Last day</dt>
+            <dd className="tnum">
+              {longDate(plan.expires)} · {daysLeftText(plan.daysLeft)}
+            </dd>
+            <dt>Code ID</dt>
+            <dd className="sy-mono">{plan.serial}</dd>
+          </>
+        )}
+      </div>
+      <SettingRow
+        title={running ? "Renew" : "Activation code"}
+        description={
+          running
+            ? "Paste your new code at any time: a code bought early starts when this one ends, so no days are lost."
+            : "Paste the code you received after buying a plan: 1 month, 3 months or 1 year, for Syncora or KineticLane + Syncora."
+        }
+      >
+        <Button
+          variant={running ? "secondary" : "primary"}
+          onClick={() => useActivation.getState().openDialog()}
+          data-testid="settings-activate"
+        >
+          {running ? "Enter new code…" : "Activate…"}
+        </Button>
+      </SettingRow>
+      <SettingRow
+        title="When a plan ends"
+        description={`Syncora reminds you each day from ${REMIND_DAYS} days before the last day. Without a running plan, Export XML and the AI first cut ask for a code; opening projects, importing, syncing, reviewing and transcribing keep working. Projects, transcripts and original media are never changed or deleted.`}
+      >
+        <span className="sy-dim">Projects kept</span>
       </SettingRow>
     </>
   );

@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { type ElectronApplication, type Page, _electron as electron, expect, test } from "@playwright/test";
 
-import { closeApp, mainWindow, printEngineLog } from "./helpers";
+import { NO_TEST_CODE, closeApp, mainWindow, printEngineLog, saveActivation, testActivation } from "./helpers";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const python = process.env.MCSYNC_PYTHON ?? (process.platform === "win32" ? "python" : "python3");
@@ -36,6 +36,10 @@ test.beforeAll(async () => {
   shootDir = path.join(work, "Smith wedding");
   files = JSON.parse(execFileSync(python, ["-c", GENERATE, shootDir], { encoding: "utf-8" })) as number;
   fs.mkdirSync(screens, { recursive: true });
+  // The first cut and its export need a running plan.
+  const activation = await testActivation();
+  if (!activation) throw new Error(NO_TEST_CODE);
+  saveActivation(path.join(work, "user-data"), activation.code);
   app = await electron.launch({
     ...(packagedApp ? { executablePath: packagedApp } : { args: [appDir] }),
     env: {
@@ -45,6 +49,7 @@ test.beforeAll(async () => {
       MCSYNC_NO_SPLASH: "1",
       MCSYNC_CACHE_DIR: path.join(work, "cache"),
       MCSYNC_USER_DATA: path.join(work, "user-data"),
+      ...activation.env,
     },
   });
   page = await mainWindow(app);

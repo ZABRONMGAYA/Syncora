@@ -346,7 +346,7 @@ export function Dialog({
 }: {
   title: string;
   icon?: LucideIcon;
-  iconTone?: "error" | "warning" | "info";
+  iconTone?: "error" | "warning" | "info" | "success";
   children: ReactNode;
   footer: ReactNode;
   onClose: () => void;
@@ -372,7 +372,9 @@ export function Dialog({
       ? "var(--sy-status-error)"
       : iconTone === "warning"
         ? "var(--sy-status-warning)"
-        : "var(--sy-text-2)";
+        : iconTone === "success"
+          ? "var(--sy-status-success)"
+          : "var(--sy-text-2)";
   return (
     <>
       <div className="sy-backdrop" onClick={onClose} />

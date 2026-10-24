@@ -1,3 +1,4 @@
+import { ACTIVATION_REQUIRED } from "../lib/activation";
 import type { Bridge, Method, Params, Result } from "./contract";
 
 export class EngineError extends Error {
@@ -15,6 +16,8 @@ export const ErrorCode = {
   busy: -32001,
   app: -32002,
   ffmpegMissing: -32003,
+  /** Writing XML or the AI first cut without a running plan (the main process refuses them). */
+  activationRequired: ACTIVATION_REQUIRED,
   engineGone: -32099,
 } as const;
 

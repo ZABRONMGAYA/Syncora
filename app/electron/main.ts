@@ -14,13 +14,17 @@ import {
   type MenuCommand,
   type Method,
 } from "../src/api/contract";
+import { ACTIVATION_REQUIRED, ACTIVATION_REQUIRED_MESSAGE, PLAN_METHODS, isActivated } from "../src/lib/activation";
 import { isReleaseUrl } from "../src/lib/updates";
+import { Activation } from "./activation";
 import { EngineProcess, RpcError, engineCommand } from "./engine";
 import { PreviewServer, ffmpegPath } from "./preview";
 import { checkForUpdate } from "./updates";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const allowed = new Set<string>(ENGINE_METHODS);
+// Writing XML and the AI first cut need a running plan (the windows ask for a code first; this holds either way).
+const needsPlan = new Set<string>(PLAN_METHODS);
 const PROJECT_FILTER = { name: "Syncora project", extensions: ["syncora"] };
 // Projects from Multicam Sync 0.1 open (and are upgraded) too.
 const OPEN_FILTER = { name: "Syncora project", extensions: ["syncora", "mcsync"] };
@@ -60,6 +64,15 @@ function previewServer(): PreviewServer {
     playable.has(f),
   );
   return preview;
+}
+
+// The activation code, saved in the settings folder (userData) and checked offline. Development builds may check codes
+// made with a throwaway key (MCSYNC_ACTIVATION_PUBLIC_KEY, for tests); a packaged Syncora accepts OrbitOne's only.
+let activation: Activation | null = null;
+function activationCheck(): Activation {
+  const publicKey = app.isPackaged ? undefined : process.env.MCSYNC_ACTIVATION_PUBLIC_KEY || undefined;
+  activation ??= new Activation(path.join(app.getPath("userData"), "activation.json"), { publicKey });
+  return activation;
 }
 
 function send(event: EngineEvent): void {
@@ -229,6 +242,7 @@ function buildMenu(): void {
         { label: "Create AI First Cut…", accelerator: "CmdOrCtrl+Shift+E", click: menuCommand("first-cut") },
         { type: "separator" },
         { label: "Settings…", accelerator: "CmdOrCtrl+,", click: menuCommand("settings") },
+        { label: "Activate Syncora…", click: menuCommand("activate") },
         { type: "separator" },
         { label: "Close Project", accelerator: "CmdOrCtrl+W", click: menuCommand("close-project") },
         ...(isMac ? [] : [{ type: "separator" as const }, { role: "quit" as const }]),
@@ -355,6 +369,9 @@ async function serveMedia(request: Request): Promise<Response> {
 function registerIpc(): void {
   ipcMain.handle("engine:invoke", async (_e, method: string, params: unknown): Promise<InvokeResponse<unknown>> => {
     if (!allowed.has(method)) return { ok: false, error: { code: -32601, message: `not allowed: ${method}` } };
+    if (needsPlan.has(method) && !isActivated(await activationCheck().status())) {
+      return { ok: false, error: { code: ACTIVATION_REQUIRED, message: ACTIVATION_REQUIRED_MESSAGE } };
+    }
     try {
       const result = await engine.request(method as Method, params ?? {});
       if (method === "export.xml") exported.add(path.resolve((result as { path: string }).path));
@@ -446,6 +463,10 @@ function registerIpc(): void {
   ipcMain.handle("updates:open", (_e, url: string) => {
     if (typeof url === "string" && isReleaseUrl(url)) void shell.openExternal(url);
   });
+  ipcMain.handle("activation:status", () => activationCheck().status());
+  ipcMain.handle("activation:activate", (_e, code: unknown) =>
+    activationCheck().activate(typeof code === "string" ? code : ""),
+  );
   ipcMain.handle("shell:show", (_e, file: string) => {
     const full = path.resolve(file);
     if (exported.has(full)) shell.showItemInFolder(full);
@@ -489,6 +510,13 @@ app.whenReady().then(async () => {
   });
   const splash = process.env.MCSYNC_NO_SPLASH === "1" ? null : createSplash();
   engine.logTo(path.join(app.getPath("userData"), "logs", "engine.log"));
+  // The saved activation code is checked at every start-up (offline); the window shows the plan and any reminder.
+  void activationCheck()
+    .status()
+    .then(
+      (s) => engine.note(`activation: ${s.state}${s.plan ? ` (${s.plan.plan} plan, last day ${s.plan.expires})` : ""}`),
+      (err: unknown) => engine.note(`activation check failed: ${String(err)}`),
+    );
   await startUp(window, splash);
 });
 

@@ -26,6 +26,7 @@ import { defaultPresetId, presetById } from "../lib/presets";
 import { clock } from "../features/multicam/clock";
 import { type View, anchorClip, clampView, fitView, offsetForStart, zoomAround } from "../features/timeline/geometry";
 import { forgetPeaks } from "../features/timeline/peaks";
+import { useActivation } from "./activation";
 import { transcriptsChanged, useAnalyze } from "./analyze";
 import { useEdit } from "./edit";
 import { notSyncedTotal } from "../screens/media/labels";
@@ -390,6 +391,8 @@ export const useApp = create<AppState>((set, get) => ({
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof EngineError && err.code === ErrorCode.busy) get().toast("info", message);
       else get().toast("error", message);
+      // The plan ended while Syncora was open: the export asks for a code from now on.
+      if (err instanceof EngineError && err.code === ErrorCode.activationRequired) void useActivation.getState().load();
       return undefined;
     }
   },
@@ -935,6 +938,9 @@ function runMenu(command: MenuCommand): void {
       break;
     case "first-cut":
       if (hasProject) useEdit.getState().openDialog();
+      break;
+    case "activate":
+      useActivation.getState().openDialog();
       break;
   }
 }

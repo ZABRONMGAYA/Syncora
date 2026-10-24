@@ -3,8 +3,11 @@ import { type FormEvent, useEffect, useState } from "react";
 
 import { bridge } from "../../api/client";
 import type { ExportFormat, ExportReport, NotSyncedPlacement, Timeline } from "../../api/contract";
+import { PlanRequired } from "../../components/ActivateDialog";
+import { isActivated, planRequiredText } from "../../lib/activation";
 import { formatDuration, parseRate, rateLabel } from "../../lib/format";
 import { notSyncedTotal } from "../../screens/media/labels";
+import { useActivation } from "../../state/activation";
 import { useProd } from "../../state/production";
 import { usePick } from "../../state/store";
 
@@ -194,9 +197,12 @@ export function ExportDialog() {
   const [exportGroup, setExportGroup] = useState(0);
   const [busy, setBusy] = useState(false);
   const notSyncedCount = useProd((s) => notSyncedTotal(s.summary));
+  const activation = useActivation((s) => s.status);
+  const activated = isActivated(activation);
 
   useEffect(() => {
     if (!exportOpen) return;
+    void useActivation.getState().load(); // a plan may have ended since Syncora opened
     setExportGroup(timeline?.groups.some((g) => g.group === group) ? group : 0);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeExport();
     window.addEventListener("keydown", onKey);
@@ -329,13 +335,25 @@ export function ExportDialog() {
             {!timecodeOk && <p className="error-text">Enter the start as HH:MM:SS:FF.</p>}
 
             <p className="muted small">Original media is referenced where it is; nothing is copied or re-encoded.</p>
+            {!activated && <PlanRequired text={planRequiredText(activation, "Exporting XML")} />}
             <div className="modal-actions">
               <button type="button" onClick={closeExport}>
                 Cancel
               </button>
-              <button type="submit" className="primary" disabled={busy || !timecodeOk} data-testid="export-submit">
-                Export…
-              </button>
+              {activated ? (
+                <button type="submit" className="primary" disabled={busy || !timecodeOk} data-testid="export-submit">
+                  Export…
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => useActivation.getState().openDialog()}
+                  data-testid="export-activate"
+                >
+                  Activate…
+                </button>
+              )}
             </div>
           </form>
         )}

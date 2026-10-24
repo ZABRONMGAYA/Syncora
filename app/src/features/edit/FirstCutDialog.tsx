@@ -5,7 +5,10 @@ import { useEffect } from "react";
 
 import { bridge } from "../../api/client";
 import type { ExportFormat, FirstCutPlan, FirstCutStyle } from "../../api/contract";
+import { PlanRequired } from "../../components/ActivateDialog";
+import { isActivated, planRequiredText } from "../../lib/activation";
 import { formatDuration, formatTime } from "../../lib/format";
+import { useActivation } from "../../state/activation";
 import { STYLE_DEFAULTS, useEdit } from "../../state/edit";
 import { useApp } from "../../state/store";
 
@@ -123,9 +126,12 @@ export function FirstCutDialog() {
   const { open, close, settings, update, plan, error, jobId, purpose, makePlan, exportCut, cancel } = useEdit();
   const job = useApp((s) => (jobId ? s.jobs[jobId] : undefined));
   const timeline = useApp((s) => s.timeline);
+  const activation = useActivation((s) => s.status);
+  const activated = isActivated(activation);
 
   useEffect(() => {
     if (!open) return;
+    void useActivation.getState().load(); // a plan may have ended since Syncora opened
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -232,6 +238,7 @@ export function FirstCutDialog() {
             </button>
           </div>
         )}
+        {!activated && <PlanRequired text={planRequiredText(activation, "The AI first cut")} />}
         {error && <p className="notice error">{error}</p>}
         {plan && !busy && <Summary plan={plan} />}
 
@@ -260,7 +267,16 @@ export function FirstCutDialog() {
           <button type="button" onClick={close}>
             Close
           </button>
-          {plan ? (
+          {!activated ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => useActivation.getState().openDialog()}
+              data-testid="first-cut-activate"
+            >
+              Activate…
+            </button>
+          ) : plan ? (
             <>
               <button type="button" onClick={() => void makePlan()} disabled={busy || !synced}>
                 Cut again

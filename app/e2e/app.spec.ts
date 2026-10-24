@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { type ElectronApplication, type Page, _electron as electron, expect, test } from "@playwright/test";
 
-import { closeApp, mainWindow, printEngineLog } from "./helpers";
+import { NO_TEST_CODE, type TestActivation, closeApp, mainWindow, printEngineLog, testActivation } from "./helpers";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const python = process.env.MCSYNC_PYTHON ?? (process.platform === "win32" ? "python" : "python3");
@@ -26,6 +26,7 @@ let shootDir: string;
 let expected: Record<string, number>;
 let app: ElectronApplication;
 let page: Page;
+let activation: TestActivation | null = null;
 
 test.describe.configure({ mode: "serial" });
 
@@ -41,6 +42,7 @@ async function launch(): Promise<void> {
       MCSYNC_NO_UPDATE_CHECK: "1",
       MCSYNC_CACHE_DIR: path.join(work, "cache"),
       MCSYNC_USER_DATA: path.join(work, "user-data"),
+      ...activation?.env,
     },
   });
   page = await mainWindow(app);
@@ -81,7 +83,8 @@ async function startOf(name: string): Promise<number> {
   return Number(await page.getByTestId(`clip-${name}`).getAttribute("data-start"));
 }
 
-test.beforeAll(() => {
+test.beforeAll(async () => {
+  activation = await testActivation();
   work = fs.mkdtempSync(path.join(os.tmpdir(), "syncora-e2e-"));
   shootDir = path.join(work, "Smith wedding");
   expected = JSON.parse(execFileSync(python, ["-c", GENERATE, shootDir], { encoding: "utf-8" })) as Record<
@@ -237,6 +240,21 @@ test("rejects a wrong match from the inspector and restores it", async () => {
   await expect(page.getByTestId("matches").getByRole("button", { name: "Restore" })).toBeVisible();
   await page.getByTestId("matches").getByRole("button", { name: "Restore" }).click();
   await expect(page.getByTestId("reject-230614_001.WAV")).toBeVisible();
+});
+
+test("asks for an active plan before exporting, and takes the code", async () => {
+  if (!activation) throw new Error(NO_TEST_CODE);
+  await page.getByTestId("stage-export").click();
+  await expect(page.getByTestId("plan-required")).toContainText("Exporting XML needs an active Syncora plan");
+  await page.getByTestId("export-activate").click();
+  const activate = page.getByTestId("activate-dialog");
+  await activate.getByTestId("activate-code").fill(activation.code);
+  await activate.getByTestId("activate-submit").click();
+  await expect(activate).toContainText("Syncora is activated");
+  await activate.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByTestId("plan-required")).toHaveCount(0);
+  await expect(page.getByTestId("export-submit")).toBeEnabled();
+  await page.getByTestId("export-dialog").getByRole("button", { name: "Cancel" }).click();
 });
 
 test("exports the timeline for Premiere Pro and Resolve", async () => {

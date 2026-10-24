@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { Bridge, EngineMethods, Method, Timeline } from "../src/api/contract";
+import { NOT_ACTIVATED } from "../src/lib/activation";
 import { findClip, useApp } from "../src/state/store";
 import { clip, group } from "./fixtures";
 
@@ -40,6 +41,8 @@ function installBridge(handlers: Partial<Record<Method, Handler>>): unknown[][] 
     showInFolder: async () => {},
     checkForUpdate: async () => ({ ok: false, error: "offline" }),
     openRelease: async () => {},
+    activationStatus: async () => NOT_ACTIVATED,
+    activate: async () => ({ ok: false, reason: "format", plan: null, status: NOT_ACTIVATED }),
     pathForFile: () => "",
     readPeaks: async () => new Uint8Array(),
     readThumbnail: async () => new Uint8Array(),

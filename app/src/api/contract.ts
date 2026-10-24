@@ -1,6 +1,7 @@
 // The engine's JSON-RPC contract (docs/ARCHITECTURE.md §6), as the desktop app sees it.
 // Kept in step with engine/src/mcsync/service/app.py; the e2e tests exercise every method used here.
 
+import type { ActivationAttempt, ActivationStatus } from "../lib/activation";
 import type { UpdateCheck } from "../lib/updates";
 
 export const PROTOCOL_VERSION = 2;
@@ -958,7 +959,8 @@ export type MenuCommand =
   | "export"
   | "settings"
   | "search"
-  | "first-cut";
+  | "first-cut"
+  | "activate";
 
 export interface RpcFailure {
   code: number;
@@ -1017,6 +1019,10 @@ export interface Bridge {
   checkForUpdate(): Promise<UpdateCheck>;
   /** Open a page of Syncora's GitHub releases in the browser (other addresses are ignored). */
   openRelease(url: string): Promise<void>;
+  /** The activation code saved on this computer, checked again now (offline, in the main process). */
+  activationStatus(): Promise<ActivationStatus>;
+  /** Check a pasted activation code; one that passes replaces the saved code (renewals). */
+  activate(code: string): Promise<ActivationAttempt>;
   /** Filesystem path of a file dropped onto the window. */
   pathForFile(file: File): string;
   /** A poster frame (PNG) from the engine's cache. */

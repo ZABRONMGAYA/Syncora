@@ -31,6 +31,7 @@ export type SettingsCategory =
   | "shortcuts"
   | "storage"
   | "privacy"
+  | "activation"
   | "updates"
   | "about";
 export type Bin =

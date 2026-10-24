@@ -159,6 +159,8 @@ jobs:
         shell: bash
         env:
           MCSYNC_PYTHON: python
+          # An installed Syncora accepts OrbitOne's codes only: a long Syncora code from the Code Maker, for the export.
+          MCSYNC_E2E_ACTIVATION_CODE: ${{ secrets.SYNCORA_E2E_ACTIVATION_CODE }}
         run: |
           echo "Testing $MCSYNC_E2E_APP"
           npx playwright test e2e/app.spec.ts e2e/analyze.spec.ts e2e/production.spec.ts e2e/multicam.spec.ts
