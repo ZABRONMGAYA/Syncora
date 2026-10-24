@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.4.3
+
+Activation for the prepaid plans sold on the OrbitOne store (1 month, 3 months or 1 year; Syncora, or KineticLane +
+Syncora). Export XML and the AI first cut now need an active plan; everything else works without one.
+
+### Added
+
+- **Activate** (File → Activate Syncora…, Settings → Activation, Settings → About, or the status bar): paste the code
+  you received after buying a plan. It is checked on this computer, with no internet or account, and saved in
+  Syncora's settings folder; it is checked again each time Syncora opens. The dialog shows the plan, what it is for,
+  its last day and the code ID, and says why a code is refused: not a code, not made by OrbitOne Studios (or changed
+  while copying), a KineticLane-only code, or a plan that has ended. A KineticLane + Syncora code unlocks Syncora.
+- **Renewals** at any time: a new code replaces the saved one (a code bought early starts when the current plan ends,
+  so no days are lost).
+- **Daily reminder** from 7 days before the plan's last day, with the days left: a notice when Syncora opens and again
+  each day it stays open (Remind me tomorrow hides it for the day), and the days left in the status bar. Trials remind
+  from their first day.
+- The Home sidebar shows the plan and its last day ("Not activated" without a code).
+
+### Changed
+
+- **Export XML and the AI first cut need an active plan.** Without one, or after a plan ends, their dialogs explain
+  it and offer Activate… instead of Export… / Create first cut; the code can be pasted there and the work carries on.
+  Opening projects, importing, syncing, reviewing, transcripts and search keep working without a plan, and projects,
+  transcripts and original media are never changed or deleted.
+
 ## 1.4.2
 
 Better sync on real weddings: a 330-clip production went from 55 to 83 synced clips, with no clip that was synced
